@@ -236,6 +236,9 @@ export default function Home() {
   const [teamMembers, setTeamMembers] = useState<Record<number, TeamMember[]>>({});
   const [availability, setAvailability] = useState<AvailabilityEntry[]>([]);
   const [search, setSearch] = useState("");
+  const [semanticTaskIds, setSemanticTaskIds] = useState<number[] | null>(null);
+  const [semanticSearchLoading, setSemanticSearchLoading] = useState(false);
+  const [semanticSearchError, setSemanticSearchError] = useState("");
   const [taskFilter, setTaskFilter] = useState("All tasks");
   const [modal, setModal] = useState<ModalName>(null);
   const [modalGroupId, setModalGroupId] = useState<number>(0);
@@ -517,6 +520,44 @@ export default function Home() {
   }, [signedIn, invitationToken]);
 
   useEffect(() => {
+    const query = search.trim();
+    if (!signedIn || !query) {
+      setSemanticTaskIds(null);
+      setSemanticSearchLoading(false);
+      setSemanticSearchError("");
+      return;
+    }
+
+    let active = true;
+    setSemanticTaskIds([]);
+    setSemanticSearchLoading(true);
+    setSemanticSearchError("");
+    const timeout = window.setTimeout(() => {
+      void apiRequest<{ taskIds: number[] }>(
+        `/api/search/tasks?q=${encodeURIComponent(query)}`,
+      )
+        .then((result) => {
+          if (active) setSemanticTaskIds(result.taskIds);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          setSemanticTaskIds([]);
+          setSemanticSearchError(
+            error instanceof Error ? error.message : "Semantic search failed.",
+          );
+        })
+        .finally(() => {
+          if (active) setSemanticSearchLoading(false);
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [search, signedIn]);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(timer);
@@ -581,11 +622,9 @@ export default function Home() {
   }, [focusStarted, focusSeconds]);
 
   const visibleTasks = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = search.trim();
     return tasks.filter((task) => {
-      const matchesSearch =
-        !query ||
-        `${task.title} ${task.group} ${task.assignee}`.toLowerCase().includes(query);
+      const matchesSearch = !query || (semanticTaskIds ?? []).includes(task.id);
       const matchesFilter =
         taskFilter === "All tasks" ||
         (taskFilter === "My tasks" && task.assigneeStudentId === userId) ||
@@ -594,7 +633,7 @@ export default function Home() {
         (taskFilter === "Completed" && task.status === "Completed");
       return matchesSearch && matchesFilter;
     });
-  }, [search, taskFilter, tasks, userId]);
+  }, [search, semanticTaskIds, taskFilter, tasks, userId]);
 
   const selectedTeam = groups.find((group) => group.groupId === selectedTeamId);
   const modalGroup = groups.find((group) => group.groupId === modalGroupId);
@@ -1471,10 +1510,11 @@ export default function Home() {
                 </div>
                 <label className="inline-search"><Icon name="search" size={16} /><input placeholder="Find a task..." value={search} onChange={(event) => setSearch(event.target.value)} /></label>
               </div>
+              {search.trim() && <p className="search-status" role={semanticSearchError ? "alert" : "status"}>{semanticSearchLoading ? "Searching tasks semantically..." : semanticSearchError || `${visibleTasks.length} matching task${visibleTasks.length === 1 ? "" : "s"}.`}</p>}
               <div className="panel full-task-panel">
                 <div className="task-table-head"><span>Task</span><span>Team</span><span>Due date</span><span>Priority</span><span>Status</span></div>
                 {visibleTasks.map((task) => <TaskTableRow key={task.id} task={task} onToggle={toggleTask} canUpdate={canUpdateTask(task)} />)}
-                {visibleTasks.length === 0 && <div className="empty-state"><span className="empty-state-icon"><Icon name="search" size={22} /></span><strong>No tasks found</strong><p>Try a different search or filter.</p></div>}
+                {visibleTasks.length === 0 && <div className="empty-state"><span className="empty-state-icon"><Icon name="search" size={22} /></span><strong>{semanticSearchLoading ? "Searching tasks" : semanticSearchError ? "Search unavailable" : "No tasks found"}</strong><p>{semanticSearchLoading ? "Finding tasks related to your search..." : semanticSearchError || "Try a different search or filter."}</p></div>}
               </div>
               <div className="task-summary"><span>{completedCount} completed</span><span>{pendingCount} to do</span><span>{inProgressCount} in progress</span></div>
             </PageSection>

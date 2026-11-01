@@ -2,7 +2,7 @@
 
 ## Local setup
 
-1. Install Node.js 20 or later and MySQL 8.0 or later.
+1. Install Node.js 20 or later, MySQL 8.0 or later, and Docker Compose.
 2. Install dependencies with `npm install`.
 3. Copy `.env.example` to `.env.local`, configure the MySQL connection, and set
    `SESSION_SECRET` to a random value of at least 32 characters.
@@ -11,6 +11,11 @@
    existing databases need the documented migrations.
 5. Start the development server with `npm run dev`.
 6. Open `http://localhost:3000`, register an account, and sign in.
+
+Start local ChromaDB before using semantic task search:
+`docker compose up -d chroma`. Task embeddings are generated locally using
+all-MiniLM-L6-v2; the model files are downloaded on the first semantic search.
+ChromaDB stores its persisted index in the `chroma_data` Docker volume.
 
 The groups dashboard reads from the `v_group_overview` database view created by
 `database/views.sql`. `GET /api/health` checks database connectivity. Never use
@@ -48,6 +53,7 @@ Errors return JSON in the form `{ "error": "..." }`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | Check MySQL connectivity. |
+| GET | `/api/search/tasks?q=:query` | Semantically search tasks visible to the authenticated student using local ChromaDB. |
 | POST | `/api/auth/register` | Register with `studentName`, `email`, `password`; optional `department`, `semester`, and `cgpa`. |
 | POST | `/api/auth/login` | Sign in with `email`, `password`, and optional boolean `rememberMe`. |
 | POST | `/api/auth/logout` | Revoke the current session and clear its cookie. |

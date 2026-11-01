@@ -10,7 +10,7 @@ Information is commonly scattered across messaging applications, spreadsheets, a
 
 The **Student Group Collaboration and Task Management System** provides a centralized platform where students can create groups, manage members, assign tasks, track progress, coordinate availability, and organize meetings.
 
-The system uses MySQL as its primary relational database and Next.js for the web application. An optional vector database provides semantic search capabilities, allowing users to find relevant tasks using natural-language queries.
+The system uses MySQL as its primary relational database, ChromaDB as a local vector database for semantic task search, and Next.js for the web application.
 
 ## 2. Objectives
 
@@ -35,7 +35,7 @@ The system uses MySQL as its primary relational database and Next.js for the web
 | Database Development | MySQL Workbench |
 | Authentication | Signed, revocable HTTP-only sessions |
 | Password Hashing | bcryptjs |
-| Vector Database | ChromaDB (optional) |
+| Vector Database | ChromaDB (local) |
 | Embedding Model | Sentence Transformers – all-MiniLM-L6-v2 |
 | Similarity Metric | Cosine Similarity |
 | API Testing | Postman |
@@ -48,7 +48,7 @@ The application follows a layered architecture:
 1. **Frontend:** Provides the user interface for managing students, groups, tasks, assignments, availability, and meetings.
 2. **Backend:** Handles API requests, authentication, authorization, validation, and business logic.
 3. **MySQL Database:** Stores structured application data and maintains relationships between entities.
-4. **Vector Database (Optional):** Stores embeddings to support semantic search.
+4. **ChromaDB:** Stores local task embeddings to support semantic search.
 
 ### Architecture Flow
 
@@ -63,14 +63,14 @@ The application follows a layered architecture:
               /        \
              v          v
           MySQL       ChromaDB
-        Database    (Optional)
+        Database    (Local)
              |          |
              v          v
        Structured    Semantic
           Data        Search
 ```
 
-MySQL is the primary source of truth. ChromaDB is used only for semantic retrieval and does not replace the relational database.
+MySQL is the primary source of truth. ChromaDB stores task embeddings for semantic retrieval and does not replace the relational database. The all-MiniLM-L6-v2 embedding model runs locally; its model files are downloaded the first time semantic search is used.
 
 ## 5. Database Design
 
@@ -181,6 +181,10 @@ create tasks, assign tasks, and schedule meetings with agenda items. Members
 can update their own availability and attendance; server-side authorization
 protects API operations.
 
+Task search uses local ChromaDB embeddings to retrieve semantically relevant
+tasks across the signed-in student's groups. Start ChromaDB with
+`docker compose up -d chroma` before using search.
+
 The focus timer and achievement indicators are browser-session UI features;
 focus time is not persisted to MySQL. Email delivery and password recovery are
 not configured. See [the API and setup guide](docs/README.md) for route access,
@@ -202,11 +206,17 @@ postman/      Postman API collection
 ## 8. Run the application
 
 1. Install dependencies with `npm install`.
-2. Copy `.env.example` to `.env.local`, configure the MySQL connection, and set
-   `SESSION_SECRET` to a random secret of at least 32 characters.
+2. Copy `.env.example` to `.env.local`, configure the MySQL connection, set
+   `SESSION_SECRET` to a random secret of at least 32 characters, and leave
+   `CHROMA_URL` at `http://localhost:8000` for the local service.
 3. Run the database scripts in the order listed above.
-4. Start the application with `npm run dev`.
-5. Open `http://localhost:3000`.
+4. Start ChromaDB with `docker compose up -d chroma`.
+5. Start the application with `npm run dev`.
+6. Open `http://localhost:3000`.
+
+ChromaDB persists its index in the `chroma_data` Docker volume. Stop the
+service with `docker compose stop chroma`; `docker compose down` stops it while
+preserving the volume.
 
 The dashboard uses the `v_group_overview` view. Use `GET /api/health` to check
 the database connection. See [docs/README.md](docs/README.md)
