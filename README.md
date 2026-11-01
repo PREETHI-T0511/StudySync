@@ -3,7 +3,7 @@
 
 StudySync is a full-stack web application designed to simplify academic group collaboration. It provides students with a centralized platform to create project teams, distribute responsibilities, manage tasks, coordinate availability, schedule meetings, and track project progress.
 
-Built with **Next.js, TypeScript, and MySQL**, StudySync combines a modern web interface with a relational database to provide structured, reliable, and efficient project management.
+Built with **Next.js, TypeScript,ChromaDB and MySQL**, StudySync combines a modern web interface with a relational database to provide structured, reliable, and efficient project management.
 
 ---
 
@@ -131,7 +131,6 @@ The project includes dependencies for an optional ChromaDB integration.
 - `CHROMA_URL` configuration for the ChromaDB service.
 - Designed to complement relational data retrieval with semantic search.
 
-MySQL remains the primary source of truth for application data. ChromaDB is an optional component and is not required for the core collaboration functionality.
 
 ---
 
