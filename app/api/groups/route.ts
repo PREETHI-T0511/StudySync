@@ -10,6 +10,7 @@ export async function GET() {
         group_id AS groupId,
         group_name AS groupName,
         group_description AS groupDescription,
+        project_estimated_hrs AS estimatedProjectHours,
         member_count AS memberCount,
         task_count AS taskCount,
         completed_task_count AS completedTaskCount
@@ -17,7 +18,14 @@ export async function GET() {
       ORDER BY group_name`,
     );
 
-    return NextResponse.json({ groups: rows });
+    const groups = (rows as Array<{ estimatedProjectHours: number | string }>).map(
+      (group) => ({
+        ...group,
+        estimatedProjectHours: Number(group.estimatedProjectHours),
+      }),
+    );
+
+    return NextResponse.json({ groups });
   } catch (error) {
     console.error("Failed to load groups:", error);
     return NextResponse.json(

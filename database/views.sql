@@ -1,6 +1,6 @@
 USE student_group_collaboration;
 
-CREATE VIEW task_group_details AS
+CREATE OR REPLACE VIEW task_group_details AS
 SELECT
     TASK.task_id,
     TASK.task_title,
@@ -13,13 +13,14 @@ FROM TASK
 INNER JOIN `GROUP`
     ON TASK.group_id = `GROUP`.group_id;
 
-CREATE VIEW v_group_overview AS
+CREATE OR REPLACE VIEW v_group_overview AS
 SELECT
     g.group_id,
     g.group_name,
     g.description AS group_description,
     g.created_by,
     g.created_date,
+    g.project_estimated_hrs,
     COALESCE(member_counts.member_count, 0) AS member_count,
     COALESCE(task_counts.task_count, 0) AS task_count,
     COALESCE(task_counts.completed_task_count, 0) AS completed_task_count

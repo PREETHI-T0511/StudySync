@@ -116,8 +116,9 @@ The `database/` directory contains the MySQL schema and supporting scripts:
 | `queries.sql` | Provides example membership, task, meeting, and availability reports. |
 | `seed.sql` | Inserts the sample students, groups, availability, tasks, meetings, agendas, participants, and assignments. Replace the password placeholders with password hashes before using the sample accounts for authentication. |
 | `transactions.sql` | Demonstrates commit, rollback, and savepoint behavior using task updates. |
-| `triggers.sql` | Prevents task assignment hours from exceeding a task's estimate. |
+| `triggers.sql` | Prevents task assignment hours from exceeding a task estimate and task estimates from exceeding the group's project estimate. |
 | `views.sql` | Defines `task_group_details` and the group summary view used by the dashboard. |
+| `migrations/2026-10-project-hour-estimates.sql` | One-time upgrade for existing databases created before project/task hour estimates. |
 
 Run these scripts against MySQL 8.0 or later in this order:
 
@@ -131,6 +132,12 @@ Run these scripts against MySQL 8.0 or later in this order:
 
 The scripts use the `student_group_collaboration` database. Run them with the MySQL CLI, for example: `mysql -u <user> -p < database/schema.sql`. Run the seed script only once on a fresh database; the sample inserts are not designed to be re-run. Seed passwords are placeholders and must be replaced with securely generated hashes before enabling authentication.
 
+For an existing database, run `database/migrations/2026-10-project-hour-estimates.sql`
+once, then rerun `database/triggers.sql` and `database/views.sql`. The migration
+sets each existing project's estimate to its current planned task hours (or one
+hour if it has no tasks), and fills missing task estimates with one hour. Do not
+run this migration on a fresh database created from `schema.sql`.
+
 ## 6. Features
 
 ### Student Management
@@ -140,16 +147,22 @@ The scripts use the `student_group_collaboration` database. Run them with the My
 
 ### Group Management
 - Create academic groups.
+- Set a total estimated-hour budget for each project; task estimates are checked
+  against the remaining budget, and the budget can’t be lowered below planned hours.
 - View group details.
 - Add students as group members.
 
 ### Tasks, Meetings, and Collaboration
 - Create tasks for a group, set a due date and priority, and update task progress.
+- Set an estimate for each task and review planned hours against its project budget.
 - Assign tasks to joined teammates, reassign them from the team workspace, and filter tasks by ownership, progress, and completion.
 - Schedule group meetings with a date, time, and location.
-- Invite teammates, track pending invitations, and add each teammate’s availability to find overlapping free slots for a meeting.
+- Open scheduled meetings to review their agenda, date and time, project, team lead, invitees, and online link or in-person location; record attendance to update the profile total.
+- Invite teammates, track pending invitations, and let every joined teammate submit their own availability; team leads can review the team’s submissions and use overlapping free slots to plan meetings.
 - Review group membership, task progress, and upcoming meetings from the dashboard.
 - Use a focused 25-minute timer to make space for individual work.
+- View upcoming-meeting notifications, teammate and project profile stats, focus time, and achievement badges.
+- Choose task deadlines using a calendar date picker.
 
 ### Frontend preview
 The Next.js frontend includes sign-in and account-creation preview forms and an interactive student workspace
@@ -160,11 +173,22 @@ is configured; if that request fails, the dashboard displays a notice and sample
 teams instead.
 
 Open a team card to view that team’s tasks, assign or reassign teammates, prepare
-an invitation, add availability, and schedule a meetup from a suggested common
-time. Sample availability is included for the demo teams. Newly prepared invites
+an invitation, add your own availability, and schedule a meetup from a suggested common
+time. Team leads can review submitted availability for each teammate. Team leads can set a project-hour budget, adjust it later, and see planned
+task hours; adding a task that exceeds the budget is blocked. Sample availability is included for the demo teams. Newly prepared invites
 and task, meeting, and availability changes are held in browser memory only:
 invites are not emailed and changes do not persist or write to MySQL. Connect
 these interactions to authenticated API routes before using them with real teams.
+
+The notification dropdown summarizes upcoming meetings. The profile dropdown
+shows the signed-in preview name and email, joined teammates, current project and
+attendance counts, time accumulated in the focus timer, and achievement badges.
+These profile stats are calculated from the current in-memory preview data; focus
+time is counted while the timer is running.
+
+Select a meetup from the schedule to open its details and update your attendance.
+Meeting agendas, invitees, attendance, and meeting locations or links are also
+preview data until meeting API routes are connected.
 
 Sign-in and account creation are currently frontend-only previews: submitting
 either form opens the workspace, but accounts are not saved and users are not

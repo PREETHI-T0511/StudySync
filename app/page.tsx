@@ -73,6 +73,7 @@ type Task = {
   title: string;
   group: string;
   due: string;
+  estimatedHours: number;
   priority: "High" | "Medium" | "Low";
   status: TaskStatus;
   assignee: string;
@@ -83,6 +84,7 @@ type Group = {
   groupId: number;
   groupName: string;
   groupDescription: string | null;
+  estimatedProjectHours: number;
   memberCount: number;
   taskCount: number;
   completedTaskCount: number;
@@ -93,9 +95,14 @@ type Meeting = {
   groupId: number;
   title: string;
   group: string;
+  dateISO: string;
   date: string;
   time: string;
+  type: "Online" | "In person";
   location: string;
+  agenda: string[];
+  attendeeIds: string[];
+  attendance: "Not marked" | "Attended" | "Did not attend";
 };
 
 type TeamMember = {
@@ -120,24 +127,24 @@ type AvailabilitySlot = {
   end: string;
 };
 
-type ModalName = "task" | "team" | "meeting" | "invite" | "availability" | null;
-type PageName = "Overview" | "My teams" | "Team details" | "Tasks" | "Schedule" | "Focus room";
+type ModalName = "task" | "team" | "teamBudget" | "meeting" | "invite" | "availability" | null;
+type PageName = "Overview" | "My teams" | "Team details" | "Tasks" | "Schedule" | "Meeting details" | "Focus room";
 
 const initialTasks: Task[] = [
-  { id: 1, groupId: 1, title: "Finalize database schema", group: "Database Project", due: "Nov 10", priority: "High", status: "In progress", assignee: "Aarav Sharma", initials: "AS" },
-  { id: 2, groupId: 1, title: "Write SQL queries", group: "Database Project", due: "Nov 12", priority: "Medium", status: "To do", assignee: "Rahul Kumar", initials: "RK" },
-  { id: 3, groupId: 2, title: "Design the dashboard", group: "Web Development", due: "Nov 15", priority: "High", status: "In progress", assignee: "Ananya Rao", initials: "AR" },
-  { id: 4, groupId: 2, title: "Prepare testing checklist", group: "Web Development", due: "Nov 18", priority: "Low", status: "To do", assignee: "Priya Nair", initials: "PN" },
+  { id: 1, groupId: 1, title: "Finalize database schema", group: "Database Project", due: "2026-11-10", estimatedHours: 10, priority: "High", status: "In progress", assignee: "Aarav Sharma", initials: "AS" },
+  { id: 2, groupId: 1, title: "Write SQL queries", group: "Database Project", due: "2026-11-12", estimatedHours: 8, priority: "Medium", status: "To do", assignee: "Rahul Kumar", initials: "RK" },
+  { id: 3, groupId: 2, title: "Design the dashboard", group: "Web Development", due: "2026-11-15", estimatedHours: 12, priority: "High", status: "In progress", assignee: "Ananya Rao", initials: "AR" },
+  { id: 4, groupId: 2, title: "Prepare testing checklist", group: "Web Development", due: "2026-11-18", estimatedHours: 5, priority: "Low", status: "To do", assignee: "Priya Nair", initials: "PN" },
 ];
 
 const initialMeetings: Meeting[] = [
-  { id: 1, groupId: 1, title: "Database design review", group: "Database Project", date: "Thu, Nov 5", time: "10:00 AM", location: "Library · Room 204" },
-  { id: 2, groupId: 2, title: "Frontend feedback", group: "Web Development", date: "Fri, Nov 6", time: "2:00 PM", location: "Online · Google Meet" },
+  { id: 1, groupId: 1, title: "Database design review", group: "Database Project", dateISO: "2026-11-05", date: "Thu, Nov 5", time: "10:00 AM", type: "In person", location: "Library · Room 204", agenda: ["Schema review", "Query discussion", "Next steps and task owners"], attendeeIds: ["db-aarav", "db-ananya", "db-rahul"], attendance: "Not marked" },
+  { id: 2, groupId: 2, title: "Frontend feedback", group: "Web Development", dateISO: "2026-11-06", date: "Fri, Nov 6", time: "2:00 PM", type: "Online", location: "https://meet.google.com/abc-defg-hij", agenda: ["Review dashboard designs", "Discuss testing plan", "Agree on next steps"], attendeeIds: ["web-ananya", "web-priya", "web-karan"], attendance: "Not marked" },
 ];
 
 const initialGroups: Group[] = [
-  { groupId: 1, groupName: "Database Project", groupDescription: "Building a thoughtful, well-structured database.", memberCount: 3, taskCount: 2, completedTaskCount: 1 },
-  { groupId: 2, groupName: "Web Development", groupDescription: "Designing and building our next great project.", memberCount: 3, taskCount: 2, completedTaskCount: 1 },
+  { groupId: 1, groupName: "Database Project", groupDescription: "Building a thoughtful, well-structured database.", estimatedProjectHours: 24, memberCount: 3, taskCount: 2, completedTaskCount: 1 },
+  { groupId: 2, groupName: "Web Development", groupDescription: "Designing and building our next great project.", estimatedProjectHours: 20, memberCount: 3, taskCount: 2, completedTaskCount: 1 },
 ];
 
 const initialTeamMembers: Record<number, TeamMember[]> = {
@@ -176,12 +183,14 @@ export default function Home() {
   const [signedIn, setSignedIn] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [userName, setUserName] = useState("Student member");
+  const [userEmail, setUserEmail] = useState("student@university.edu");
   const [activePage, setActivePage] = useState<PageName>("Overview");
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [groupNotice, setGroupNotice] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [meetings, setMeetings] = useState<Meeting[]>(initialMeetings);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<number | null>(null);
   const [teamMembers, setTeamMembers] = useState<Record<number, TeamMember[]>>(initialTeamMembers);
   const [availability, setAvailability] = useState<AvailabilityEntry[]>(initialAvailability);
   const [search, setSearch] = useState("");
@@ -190,9 +199,15 @@ export default function Home() {
   const [modalGroupId, setModalGroupId] = useState<number>(initialGroups[0].groupId);
   const [meetingDate, setMeetingDate] = useState("");
   const [meetingStart, setMeetingStart] = useState("");
+  const [meetingType, setMeetingType] = useState<Meeting["type"]>("In person");
+  const [budgetEditGroupId, setBudgetEditGroupId] = useState<number | null>(null);
+  const [formError, setFormError] = useState("");
   const [toast, setToast] = useState("");
   const [focusStarted, setFocusStarted] = useState(false);
   const [focusSeconds, setFocusSeconds] = useState(25 * 60);
+  const [focusSpentSeconds, setFocusSpentSeconds] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -205,7 +220,12 @@ export default function Home() {
           throw new Error(result.error ?? "Unable to load groups.");
         }
         if (active && result.groups) {
-          setGroups(result.groups);
+          setGroups(
+            result.groups.map((group) => ({
+              ...group,
+              estimatedProjectHours: Number(group.estimatedProjectHours),
+            })),
+          );
           setTeamMembers((current) => {
             const next = { ...current };
             for (const group of result.groups ?? []) {
@@ -250,9 +270,40 @@ export default function Home() {
   }, [toast]);
 
   useEffect(() => {
+    setFormError("");
+  }, [modal]);
+
+  useEffect(() => {
+    if (!profileOpen && !notificationsOpen) return;
+
+    function closePopovers(event: MouseEvent) {
+      if (event.target instanceof Element && event.target.closest(".popover-anchor, .profile-button")) {
+        return;
+      }
+      setProfileOpen(false);
+      setNotificationsOpen(false);
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setProfileOpen(false);
+        setNotificationsOpen(false);
+      }
+    }
+
+    document.addEventListener("click", closePopovers);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("click", closePopovers);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [profileOpen, notificationsOpen]);
+
+  useEffect(() => {
     if (!focusStarted || focusSeconds === 0) return;
     const timer = window.setTimeout(() => {
       setFocusSeconds((current) => Math.max(0, current - 1));
+      setFocusSpentSeconds((current) => current + 1);
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [focusStarted, focusSeconds]);
@@ -281,9 +332,53 @@ export default function Home() {
   }, [search, taskFilter, tasks, userName]);
 
   const selectedTeam = groups.find((group) => group.groupId === selectedTeamId);
+  const modalGroup = groups.find((group) => group.groupId === modalGroupId);
+  const budgetEditGroup = groups.find((group) => group.groupId === budgetEditGroupId);
+  const modalGroupTaskHours = tasks
+    .filter((task) => task.groupId === modalGroupId)
+    .reduce((total, task) => total + task.estimatedHours, 0);
+  const budgetEditTaskHours = tasks
+    .filter((task) => task.groupId === budgetEditGroupId)
+    .reduce((total, task) => total + task.estimatedHours, 0);
+  const selectedMeeting = meetings.find((meeting) => meeting.id === selectedMeetingId);
+  const selectedMeetingGroup = selectedMeeting
+    ? groups.find((group) => group.groupId === selectedMeeting.groupId)
+    : undefined;
+  const selectedMeetingMembers = selectedMeeting
+    ? teamMembers[selectedMeeting.groupId] ?? noTeamMembers
+    : noTeamMembers;
+  const selectedMeetingLead = selectedMeetingMembers.find(
+    (member) => member.role === "Leader" && member.status === "Joined",
+  );
+  const selectedMeetingAttendees = selectedMeeting
+    ? selectedMeeting.attendeeIds
+        .map((memberId) =>
+          selectedMeetingMembers.find((member) => member.id === memberId),
+        )
+        .filter((member): member is TeamMember => member !== undefined)
+    : [];
   const selectedTeamMembers = selectedTeam
     ? teamMembers[selectedTeam.groupId] ?? noTeamMembers
     : noTeamMembers;
+  const selectedTeamCurrentMember = selectedTeamMembers.find(
+    (member) =>
+      member.status === "Joined" &&
+      member.email.toLowerCase() === userEmail.toLowerCase(),
+  );
+  const selectedTeamAvailability = selectedTeam
+    ? availability
+        .filter((entry) => {
+          if (entry.groupId !== selectedTeam.groupId) return false;
+          return selectedTeamCurrentMember?.role === "Leader"
+            ? selectedTeamMembers.some((member) => member.id === entry.memberId)
+            : entry.memberId === selectedTeamCurrentMember?.id;
+        })
+        .sort((first, second) =>
+          first.date === second.date
+            ? first.start.localeCompare(second.start)
+            : first.date.localeCompare(second.date),
+        )
+    : [];
   const selectedTeamTasks = selectedTeam
     ? tasks.filter(
         (task) =>
@@ -309,10 +404,65 @@ export default function Home() {
         : [],
     [availability, selectedTeam, selectedTeamMembers],
   );
+  const upcomingMeetings = useMemo(
+    () =>
+      meetings
+        .filter(
+          (meeting) =>
+            meeting.attendance !== "Attended" &&
+            meeting.dateISO >= getTodayISO(),
+        )
+        .sort((first, second) =>
+          first.dateISO === second.dateISO
+            ? first.time.localeCompare(second.time)
+            : first.dateISO.localeCompare(second.dateISO),
+        ),
+    [meetings],
+  );
+  const friends = useMemo(() => {
+    const seen = new Set<string>();
+    return Object.values(teamMembers)
+      .flat()
+      .filter((member) => {
+        if (member.status !== "Joined") return false;
+        if (member.email.toLowerCase() === userEmail.toLowerCase()) return false;
+        const key = member.email.toLowerCase() || member.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 5);
+  }, [teamMembers, userEmail]);
+  const projectsWorkedOn = new Set(tasks.map((task) => task.groupId)).size;
+  const completedProjects = groups.filter((group) => {
+    const projectTasks = tasks.filter((task) => task.groupId === group.groupId);
+    return projectTasks.length > 0 && projectTasks.every((task) => task.status === "Completed");
+  }).length;
 
   function openTeam(groupId: number) {
     setSelectedTeamId(groupId);
     setActivePage("Team details");
+  }
+
+  function openMeeting(meetingId: number) {
+    setSelectedMeetingId(meetingId);
+    setActivePage("Meeting details");
+    setNotificationsOpen(false);
+  }
+
+  function updateMeetingAttendance(meetingId: number, attendance: Meeting["attendance"]) {
+    setMeetings((current) =>
+      current.map((meeting) =>
+        meeting.id === meetingId ? { ...meeting, attendance } : meeting,
+      ),
+    );
+    showToast(
+      attendance === "Attended"
+        ? "Meetup marked as attended. Your profile total has been updated."
+        : attendance === "Did not attend"
+          ? "Meetup marked as not attended."
+          : "Attendance is no longer marked.",
+    );
   }
 
   function openTaskModal(groupId = selectedTeamId ?? groups[0]?.groupId) {
@@ -324,7 +474,14 @@ export default function Home() {
     if (groupId !== undefined && groupId !== null) setModalGroupId(groupId);
     setMeetingDate(slot?.date ?? "");
     setMeetingStart(slot?.start ?? "");
+    setMeetingType("In person");
     setModal("meeting");
+  }
+
+  function openProjectBudgetModal(groupId: number) {
+    setFormError("");
+    setBudgetEditGroupId(groupId);
+    setModal("teamBudget");
   }
 
   function showToast(message: string) {
@@ -341,9 +498,24 @@ export default function Home() {
       const groupId = Number(formData.get("groupId"));
       const group = groups.find((item) => item.groupId === groupId);
       if (!group) {
-        showToast("Choose a team before adding this task.");
+        setFormError("Choose a team before adding this task.");
         return;
       }
+      const estimatedHours = Number(formData.get("estimatedHours"));
+      if (!Number.isFinite(estimatedHours) || estimatedHours <= 0) {
+        setFormError("Enter a task estimate greater than zero.");
+        return;
+      }
+      const currentTaskHours = tasks
+        .filter((task) => task.groupId === groupId)
+        .reduce((total, task) => total + task.estimatedHours, 0);
+      if (currentTaskHours + estimatedHours > group.estimatedProjectHours) {
+        setFormError(
+          `This task would bring the project to ${(currentTaskHours + estimatedHours).toFixed(1)} hours, over its ${group.estimatedProjectHours} hour estimate. Increase the project estimate or reduce task estimates before adding it.`,
+        );
+        return;
+      }
+      setFormError("");
       const assigneeId = String(formData.get("assigneeId") ?? "");
       const assignee = (teamMembers[groupId] ?? []).find(
         (member) => member.id === assigneeId && member.status === "Joined",
@@ -354,7 +526,8 @@ export default function Home() {
           groupId,
           title,
           group: group.groupName,
-          due: String(formData.get("due") ?? "") || "No due date",
+          due: String(formData.get("due") ?? ""),
+          estimatedHours,
           priority: String(formData.get("priority") ?? "Medium") as Task["priority"],
           status: "To do",
           assignee: assignee?.name ?? "Unassigned",
@@ -378,6 +551,12 @@ export default function Home() {
     } else if (modal === "team") {
       const groupName = String(formData.get("title") ?? "").trim();
       if (!groupName) return;
+      const estimatedProjectHours = Number(formData.get("estimatedProjectHours"));
+      if (!Number.isFinite(estimatedProjectHours) || estimatedProjectHours <= 0) {
+        setFormError("Enter a project estimate greater than zero.");
+        return;
+      }
+      setFormError("");
       const groupId = Date.now();
       setGroups((current) => [
         ...current,
@@ -385,6 +564,7 @@ export default function Home() {
           groupId,
           groupName,
           groupDescription: String(formData.get("description") ?? "").trim() || null,
+          estimatedProjectHours,
           memberCount: 1,
           taskCount: 0,
           completedTaskCount: 0,
@@ -396,7 +576,7 @@ export default function Home() {
           {
             id: `member-${groupId}`,
             name: userName,
-            email: "",
+            email: userEmail,
             role: "Leader",
             status: "Joined",
           },
@@ -405,6 +585,32 @@ export default function Home() {
       setSelectedTeamId(groupId);
       setActivePage("My teams");
       showToast("Your new team is ready.");
+    } else if (modal === "teamBudget") {
+      const groupId = Number(formData.get("groupId"));
+      const group = groups.find((item) => item.groupId === groupId);
+      const estimatedProjectHours = Number(formData.get("estimatedProjectHours"));
+      const allocatedHours = tasks
+        .filter((task) => task.groupId === groupId)
+        .reduce((total, task) => total + task.estimatedHours, 0);
+      if (!group || !Number.isFinite(estimatedProjectHours) || estimatedProjectHours <= 0) {
+        setFormError("Enter a project estimate greater than zero.");
+        return;
+      }
+      if (estimatedProjectHours < allocatedHours) {
+        setFormError(
+          `The project already has ${allocatedHours.toFixed(1)} task hours planned. Set an estimate of at least ${allocatedHours.toFixed(1)} hours.`,
+        );
+        return;
+      }
+      setGroups((current) =>
+        current.map((item) =>
+          item.groupId === groupId ? { ...item, estimatedProjectHours } : item,
+        ),
+      );
+      setFormError("");
+      setSelectedTeamId(groupId);
+      setActivePage("Team details");
+      showToast("Project estimate updated.");
     } else if (modal === "meeting") {
       const title = String(formData.get("title") ?? "").trim();
       if (!title) return;
@@ -412,22 +618,34 @@ export default function Home() {
       const groupId = Number(formData.get("groupId"));
       const group = groups.find((item) => item.groupId === groupId);
       if (!group) {
-        showToast("Choose a team before scheduling this meetup.");
+        setFormError("Choose a team before scheduling this meetup.");
         return;
       }
+      const meetingId = Date.now();
       setMeetings((current) => [
         ...current,
         {
-          id: Date.now(),
+          id: meetingId,
           groupId,
           title,
           group: group.groupName,
+          dateISO: rawDate,
           date: rawDate ? new Date(`${rawDate}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "Date to be set",
           time: formatDisplayTime(String(formData.get("time") ?? "")) || "Time to be set",
           location: String(formData.get("location") ?? "").trim() || "Location to be set",
+          type: String(formData.get("meetingType") ?? "In person") as Meeting["type"],
+          agenda: String(formData.get("agenda") ?? "")
+            .split(/\r?\n/)
+            .map((item) => item.trim())
+            .filter(Boolean),
+          attendeeIds: (teamMembers[groupId] ?? [])
+            .map((member) => member.id),
+          attendance: "Not marked",
         },
       ]);
-      setActivePage(selectedTeamId === groupId ? "Team details" : "Schedule");
+      setFormError("");
+      setSelectedMeetingId(meetingId);
+      setActivePage("Meeting details");
       showToast("Your meeting has been scheduled.");
     } else if (modal === "invite") {
       const groupId = Number(formData.get("groupId"));
@@ -451,24 +669,39 @@ export default function Home() {
       showToast(`Invite prepared for ${email}. Email delivery isn’t connected in this preview.`);
     } else if (modal === "availability") {
       const groupId = Number(formData.get("groupId"));
-      const memberId = String(formData.get("memberId") ?? "");
       const date = String(formData.get("date") ?? "");
       const start = String(formData.get("start") ?? "");
       const end = String(formData.get("end") ?? "");
-      if (!groupId || !memberId || !date || !start || !end || start >= end) {
-        showToast("Add a date and a valid time window.");
+      const currentMember = (teamMembers[groupId] ?? []).find(
+        (member) =>
+          member.status === "Joined" &&
+          member.email.toLowerCase() === userEmail.toLowerCase(),
+      );
+      if (!groupId || !currentMember) {
+        setFormError("You need to be a joined team member to add your availability.");
+        return;
+      }
+      if (!date || !start || !end || start >= end) {
+        setFormError("Choose a date and a valid time window.");
+        return;
+      }
+      const duplicate = availability.some(
+        (entry) =>
+          entry.groupId === groupId &&
+          entry.memberId === currentMember.id &&
+          entry.date === date &&
+          entry.start === start &&
+          entry.end === end,
+      );
+      if (duplicate) {
+        setFormError("You’ve already added this availability window.");
         return;
       }
       setAvailability((current) => [
-        ...current.filter(
-          (entry) =>
-            entry.groupId !== groupId ||
-            entry.memberId !== memberId ||
-            entry.date !== date,
-        ),
-        { groupId, memberId, date, start, end },
+        ...current,
+        { groupId, memberId: currentMember.id, date, start, end },
       ]);
-      showToast("Availability saved. Shared slots have been updated.");
+      showToast("Your availability is saved and shared with the team lead.");
     }
     setModal(null);
   }
@@ -589,6 +822,7 @@ export default function Home() {
               onSubmit={(event) => {
                 event.preventDefault();
                 const formData = new FormData(event.currentTarget);
+                const email = String(formData.get("email") ?? "").trim();
                 if (creatingAccount) {
                   const name = String(formData.get("name") ?? "").trim();
                   const password = String(formData.get("password") ?? "");
@@ -602,7 +836,17 @@ export default function Home() {
                     return;
                   }
                   setUserName(name);
+                } else {
+                  const accountMember = Object.values(teamMembers)
+                    .flat()
+                    .find(
+                      (member) =>
+                        member.status === "Joined" &&
+                        member.email.toLowerCase() === email.toLowerCase(),
+                    );
+                  setUserName(accountMember?.name ?? email.split("@")[0]);
                 }
+                setUserEmail(email);
                 setSignedIn(true);
                 setActivePage("Overview");
                 if (creatingAccount) {
@@ -676,6 +920,16 @@ export default function Home() {
   const completedCount = tasks.filter((task) => task.status === "Completed").length;
   const inProgressCount = tasks.filter((task) => task.status === "In progress").length;
   const pendingCount = tasks.filter((task) => task.status === "To do").length;
+  const attendedMeetingsCount = meetings.filter(
+    (meeting) => meeting.attendance === "Attended",
+  ).length;
+  const focusMinutes = Math.floor(focusSpentSeconds / 60);
+  const profileBadges = [
+    { name: "First steps", detail: "Complete your first task", earned: completedCount > 0, icon: "✦" },
+    { name: "Team player", detail: "Work with 3 teammates", earned: friends.length >= 3, icon: "♡" },
+    { name: "Project finisher", detail: "Complete a team project", earned: completedProjects > 0, icon: "✳" },
+    { name: "Focus fan", detail: "Focus for 25 minutes", earned: focusMinutes >= 25, icon: "◷" },
+  ];
 
   return (
     <div className="app-shell">
@@ -693,7 +947,7 @@ export default function Home() {
           <span className="nav-caption">WORKSPACE</span>
           {navItems.map((item) => (
             <button
-              className={`nav-link ${activePage === item.label || (item.label === "My teams" && activePage === "Team details") ? "active" : ""}`}
+              className={`nav-link ${activePage === item.label || (item.label === "My teams" && activePage === "Team details") || (item.label === "Schedule" && activePage === "Meeting details") ? "active" : ""}`}
               key={item.label}
               onClick={() => setActivePage(item.label)}
               type="button"
@@ -720,9 +974,9 @@ export default function Home() {
             <strong>Small steps add up.</strong>
             <p>Make a little progress today. Your future self will thank you.</p>
           </div>
-          <button className="profile-button" onClick={() => { setSignedIn(false); setSearch(""); }} type="button">
+          <button className="profile-button" aria-label="Open profile" aria-expanded={profileOpen} onClick={() => { setProfileOpen((open) => !open); setNotificationsOpen(false); }} type="button">
             <span className="profile-avatar">{userName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
-            <span className="profile-copy"><strong>{userName}</strong><small>View profile</small></span>
+            <span className="profile-copy"><strong>{userName}</strong><small>{userEmail}</small></span>
             <Icon name="more" size={18} />
           </button>
         </div>
@@ -730,15 +984,96 @@ export default function Home() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumb"><span>Workspace</span><Icon name="chevron" size={14} /><strong>{activePage === "Team details" ? selectedTeam?.groupName ?? "Team" : activePage}</strong></div>
+          <div className="breadcrumb"><span>Workspace</span><Icon name="chevron" size={14} /><strong>{activePage === "Team details" ? selectedTeam?.groupName ?? "Team" : activePage === "Meeting details" ? selectedMeeting?.title ?? "Meetup" : activePage}</strong></div>
           <div className="topbar-actions">
             <label className="global-search">
               <Icon name="search" size={17} />
               <input aria-label="Search tasks" placeholder="Search tasks..." value={search} onChange={(event) => setSearch(event.target.value)} />
               <kbd>⌘ K</kbd>
             </label>
-            <button className="icon-button notification-button" aria-label="Notifications" onClick={() => showToast("You’re all caught up — no new notifications.")} type="button"><Icon name="bell" size={19} /><span /></button>
-            <button className="top-avatar" aria-label="Sign out" onClick={() => setSignedIn(false)} type="button">SC</button>
+            <div className="popover-anchor">
+              <button
+                className="icon-button notification-button"
+                aria-label={`Notifications${upcomingMeetings.length ? `, ${upcomingMeetings.length} upcoming meetings` : ""}`}
+                aria-expanded={notificationsOpen}
+                aria-controls="notifications-panel"
+                onClick={() => { setNotificationsOpen((open) => !open); setProfileOpen(false); }}
+                type="button"
+              >
+                <Icon name="bell" size={19} />{upcomingMeetings.length > 0 && <span className="notification-count">{upcomingMeetings.length}</span>}
+              </button>
+              {notificationsOpen && (
+                <section className="header-popover notification-popover" id="notifications-panel" aria-label="Notifications">
+                  <div className="popover-heading"><div><span className="section-eyebrow">YOUR TEAM CALENDAR</span><h2>Notifications</h2></div><span className="count-pill">{upcomingMeetings.length} upcoming</span></div>
+                  {upcomingMeetings.length > 0 ? (
+                    <div className="notification-list">
+                      {upcomingMeetings.map((meeting) => (
+                        <button className="notification-item" key={meeting.id} onClick={() => openMeeting(meeting.id)} type="button">
+                          <span className="notification-meeting-icon"><Icon name="calendar" size={17} /></span>
+                          <span className="notification-item-copy"><strong>Upcoming meetup</strong><span>{meeting.title} · {meeting.group}</span><small>{formatDateLabel(meeting.dateISO)} · {meeting.time}</small></span>
+                          <span className="notification-chevron"><Icon name="chevron" size={16} /></span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="no-notifications"><span className="empty-state-icon"><Icon name="bell" size={19} /></span><strong>No notifications</strong><p>You’re all caught up. New meeting reminders will show up here.</p></div>
+                  )}
+                  <div className="popover-footnote">Meeting reminders are based on your team schedule.</div>
+                </section>
+              )}
+            </div>
+            <div className="popover-anchor profile-anchor">
+              <button
+                className="top-avatar"
+                aria-label="Open profile"
+                aria-expanded={profileOpen}
+                aria-controls="profile-panel"
+                onClick={() => { setProfileOpen((open) => !open); setNotificationsOpen(false); }}
+                type="button"
+              >
+                {userName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
+              </button>
+              {profileOpen && (
+                <section className="header-popover profile-popover" id="profile-panel" aria-label="Your profile">
+                  <div className="profile-popover-heading">
+                    <span className="profile-avatar profile-avatar-large">{userName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
+                    <span><strong>{userName}</strong><small>{userEmail}</small></span>
+                  </div>
+                  <div className="profile-stats">
+                    <div><strong>{attendedMeetingsCount}</strong><span>Meets attended</span></div>
+                    <div><strong>{projectsWorkedOn}</strong><span>Projects worked on</span></div>
+                    <div><strong>{formatFocusDuration(focusSpentSeconds)}</strong><span>Focus time</span></div>
+                    <div><strong>{completedProjects}</strong><span>Projects completed</span></div>
+                  </div>
+                  <div className="profile-popover-section">
+                    <div className="popover-section-title"><strong>Friends</strong><span>{friends.length}</span></div>
+                    {friends.length > 0 ? (
+                      <div className="profile-friends">
+                        {friends.slice(0, 4).map((friend) => (
+                          <div className="profile-friend" key={friend.id}>
+                            <span className="friend-avatar">{friend.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
+                            <span><strong>{friend.name}</strong><small>{friend.role}</small></span>
+                            <i aria-label="Joined teammate" />
+                          </div>
+                        ))}
+                        {friends.length > 4 && <span className="more-friends">and {friends.length - 4} more teammates</span>}
+                      </div>
+                    ) : <p className="profile-empty">Join a team to meet your first study buddy.</p>}
+                  </div>
+                  <div className="profile-popover-section profile-badges-section">
+                    <div className="popover-section-title"><strong>Achievements</strong><span>{profileBadges.filter((badge) => badge.earned).length} / {profileBadges.length} earned</span></div>
+                    <div className="profile-badges">
+                      {profileBadges.map((badge) => (
+                        <div className={`profile-badge ${badge.earned ? "earned" : "locked"}`} key={badge.name} title={badge.detail}>
+                          <span>{badge.icon}</span><strong>{badge.name}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button className="profile-logout" onClick={() => { setSignedIn(false); setSearch(""); setProfileOpen(false); }} type="button"><Icon name="lock" size={15} /> Log out</button>
+                </section>
+              )}
+            </div>
           </div>
         </header>
 
@@ -807,7 +1142,7 @@ export default function Home() {
                     <button className="text-button" onClick={() => setActivePage("Schedule")} type="button">Full schedule <Icon name="arrow" size={15} /></button>
                   </div>
                   <div className="meeting-list">
-                    {meetings.slice(0, 2).map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} />)}
+                    {upcomingMeetings.slice(0, 2).map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} onOpen={() => openMeeting(meeting.id)} />)}
                     {meetings.length === 0 && <p className="empty-copy">Your calendar is open. Plan a team catch-up?</p>}
                   </div>
                   <button className="add-inline" onClick={() => setModal("meeting")} type="button"><Icon name="plus" size={16} /> Plan a meetup</button>
@@ -870,9 +1205,11 @@ export default function Home() {
                 <div>
                   <span className="section-eyebrow">MAKING PROGRESS TOGETHER</span>
                   <p>{selectedTeam.memberCount} teammates · {selectedTeamTasks.length} tasks · {selectedTeamMeetings.length} upcoming meetups</p>
+                  <p className="project-estimate-summary">{selectedTeamTasks.reduce((total, task) => total + task.estimatedHours, 0).toFixed(1)} of {selectedTeam.estimatedProjectHours} estimated project hours planned</p>
                   <div className="team-detail-progress"><span><span style={{ width: `${selectedTeam.taskCount ? Math.round((selectedTeam.completedTaskCount / selectedTeam.taskCount) * 100) : 0}%` }} /></span><strong>{selectedTeam.taskCount ? Math.round((selectedTeam.completedTaskCount / selectedTeam.taskCount) * 100) : 0}% complete</strong></div>
                 </div>
                 <div className="team-detail-actions">
+                  <button className="button button-quiet" onClick={() => openProjectBudgetModal(selectedTeam.groupId)} type="button"><Icon name="clock" size={16} /> Adjust estimate</button>
                   <button className="button button-quiet" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("availability"); }} type="button"><Icon name="clock" size={16} /> Add availability</button>
                   <button className="button button-primary" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("invite"); }} type="button"><Icon name="plus" size={16} /> Invite teammate</button>
                 </div>
@@ -891,7 +1228,7 @@ export default function Home() {
                     return (
                       <div className="team-task-row" key={task.id}>
                         <button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => toggleTask(task.id)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button>
-                        <div className="team-task-copy"><strong>{task.title}</strong><span>{task.status} · Due {task.due}</span></div>
+                        <div className="team-task-copy"><strong>{task.title}</strong><span>{task.status} · {task.estimatedHours} estimated h · Due {formatTaskDueDate(task.due)}</span></div>
                         <select aria-label={`Assign ${task.title}`} value={assignedMember?.id ?? ""} onChange={(event) => assignTask(task.id, event.target.value)}>
                           <option value="">Unassigned</option>
                           {selectedTeamMembers.filter((member) => member.status === "Joined").map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
@@ -924,10 +1261,35 @@ export default function Home() {
 
               <section className="panel shared-availability-panel">
                 <div className="panel-heading">
-                  <div><span className="section-eyebrow">FIND A TIME THAT WORKS FOR EVERYONE</span><h2>Shared free slots</h2></div>
+                  <div><span className="section-eyebrow">FIND A TIME THAT WORKS FOR EVERYONE</span><h2>Team availability</h2></div>
                   <button className="text-button" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("availability"); }} type="button"><Icon name="plus" size={15} /> Add availability</button>
                 </div>
-                <p className="availability-explainer">Times below are when every joined teammate is free. Pending invites are included once they join.</p>
+                <p className="availability-explainer">
+                  Add your own available times. Your team lead can see each joined teammate’s submissions and use the shared free slots to plan a meetup.
+                </p>
+                {selectedTeamCurrentMember ? (
+                  <div className="availability-submissions">
+                    <strong>{selectedTeamCurrentMember.role === "Leader" ? "Submitted by teammates" : "Your submitted times"}</strong>
+                    {selectedTeamAvailability.length > 0 ? (
+                      <div className="availability-submission-list">
+                        {selectedTeamAvailability.map((entry) => {
+                          const member = selectedTeamMembers.find((item) => item.id === entry.memberId);
+                          return (
+                            <div className="availability-submission" key={`${entry.memberId}-${entry.date}-${entry.start}-${entry.end}`}>
+                              <span><strong>{selectedTeamCurrentMember.role === "Leader" ? member?.name ?? "Team member" : "You"}</strong><small>{formatDateLabel(entry.date)}</small></span>
+                              <span>{formatDisplayTime(entry.start)}–{formatDisplayTime(entry.end)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="availability-submission-empty">No availability has been added yet.</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="availability-explainer">Join this team to submit availability for yourself.</p>
+                )}
+                <div className="shared-slots-heading"><strong>Common free slots</strong><span>When all joined teammates overlap</span></div>
                 {commonSlots.length > 0 ? (
                   <div className="availability-slot-list">
                     {commonSlots.map((slot) => (
@@ -947,7 +1309,7 @@ export default function Home() {
               {selectedTeamMeetings.length > 0 && (
                 <section className="panel team-meetings-panel">
                   <div className="panel-heading"><div><span className="section-eyebrow">TIME TO GET TOGETHER</span><h2>Team meetups</h2></div><button className="text-button" onClick={() => openMeetingModal(selectedTeam.groupId)} type="button"><Icon name="plus" size={15} /> Plan a meetup</button></div>
-                  {selectedTeamMeetings.map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} roomy />)}
+                  {selectedTeamMeetings.map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} roomy onOpen={() => openMeeting(meeting.id)} />)}
                 </section>
               )}
             </PageSection>
@@ -956,14 +1318,68 @@ export default function Home() {
           {activePage === "Schedule" && (
             <PageSection eyebrow="MAKE ROOM FOR EACH OTHER" title="Team schedule" description="Time set aside to think, plan, and get somewhere together." actionLabel="Plan a meetup" onAction={() => setModal("meeting")}>
               <div className="calendar-banner">
-                <div className="calendar-date-card"><span>NOV</span><strong>05</strong><small>THU</small></div>
-                <div><span className="section-eyebrow">NEXT UP</span><h2>{meetings[0]?.title ?? "An open afternoon"}</h2><p>{meetings[0] ? `${meetings[0].date} · ${meetings[0].time} · ${meetings[0].location}` : "Plan a team meetup whenever it works for you."}</p></div>
+                <div className="calendar-date-card"><span>{upcomingMeetings[0]?.dateISO ? formatDateLabel(upcomingMeetings[0].dateISO).split(" ")[1].toUpperCase() : "OPEN"}</span><strong>{upcomingMeetings[0]?.dateISO.slice(8, 10) ?? "—"}</strong><small>{upcomingMeetings[0]?.date.split(" ")[0].replace(",", "").toUpperCase() ?? "DAY"}</small></div>
+                <div><span className="section-eyebrow">NEXT UP</span><h2>{upcomingMeetings[0]?.title ?? "An open afternoon"}</h2><p>{upcomingMeetings[0] ? `${formatDateLabel(upcomingMeetings[0].dateISO)} · ${upcomingMeetings[0].time} · ${upcomingMeetings[0].group}` : "Plan a team meetup whenever it works for you."}</p></div>
                 <Icon name="calendar" size={34} />
               </div>
               <section className="panel schedule-page-panel">
-                <div className="panel-heading"><div><span className="section-eyebrow">A FEW THINGS ON THE CALENDAR</span><h2>Upcoming meetups</h2></div><span className="count-pill">{meetings.length} scheduled</span></div>
-                {meetings.map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} roomy />)}
-                {meetings.length === 0 && <p className="empty-copy">No meetups just yet. Pick a time to bring everyone together.</p>}
+                <div className="panel-heading"><div><span className="section-eyebrow">A FEW THINGS ON THE CALENDAR</span><h2>Upcoming meetups</h2></div><span className="count-pill">{upcomingMeetings.length} scheduled</span></div>
+                {upcomingMeetings.map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} roomy onOpen={() => openMeeting(meeting.id)} />)}
+                {upcomingMeetings.length === 0 && <p className="empty-copy">No upcoming meetups just yet. Pick a time to bring everyone together.</p>}
+              </section>
+            </PageSection>
+          )}
+
+          {activePage === "Meeting details" && selectedMeeting && (
+            <PageSection
+              eyebrow="MEETING DETAILS"
+              title={selectedMeeting.title}
+              description={`${selectedMeeting.group} · ${formatDateLabel(selectedMeeting.dateISO)} · ${selectedMeeting.time}`}
+              actionLabel="Back to schedule"
+              onAction={() => setActivePage("Schedule")}
+            >
+              <div className="meeting-detail-grid">
+                <section className="panel meeting-agenda-panel">
+                  <div className="panel-heading"><div><span className="section-eyebrow">A PLAN FOR OUR TIME</span><h2>Agenda</h2></div><span className="count-pill">{selectedMeeting.agenda.length} items</span></div>
+                  {selectedMeeting.agenda.length > 0 ? (
+                    <ol className="meeting-agenda-list">
+                      {selectedMeeting.agenda.map((item, index) => <li key={`${selectedMeeting.id}-${item}`}><span>{String(index + 1).padStart(2, "0")}</span><strong>{item}</strong></li>)}
+                    </ol>
+                  ) : <p className="empty-copy">No agenda yet. Add a few items when planning your next meetup.</p>}
+                  <div className="meeting-agenda-note"><Icon name="spark" size={16} /><span>A little plan helps everyone make the most of the time together.</span></div>
+                </section>
+                <section className="panel meeting-info-panel">
+                  <div className="panel-heading"><div><span className="section-eyebrow">THE WHEN & WHERE</span><h2>Meetup info</h2></div><span className={`meeting-type-pill ${selectedMeeting.type === "Online" ? "online" : "in-person"}`}>{selectedMeeting.type}</span></div>
+                  <dl className="meeting-info-list">
+                    <div><dt>Date</dt><dd><Icon name="calendar" size={15} />{formatDateLabel(selectedMeeting.dateISO)}</dd></div>
+                    <div><dt>Time</dt><dd><Icon name="clock" size={15} />{selectedMeeting.time}</dd></div>
+                    <div><dt>Project</dt><dd><Icon name="book" size={15} />{selectedMeetingGroup?.groupName ?? selectedMeeting.group}</dd></div>
+                    <div><dt>{selectedMeeting.type === "Online" ? "Google Meet link" : "Location"}</dt><dd>{selectedMeeting.type === "Online" ? (
+                      /^https?:\/\//i.test(selectedMeeting.location) ? <a className="meeting-location-link" href={selectedMeeting.location} target="_blank" rel="noreferrer"><Icon name="arrow" size={14} />{selectedMeeting.location.replace(/^https?:\/\//i, "")}</a> : <span><Icon name="pin" size={15} />{selectedMeeting.location}</span>
+                    ) : <span><Icon name="pin" size={15} />{selectedMeeting.location}</span>}</dd></div>
+                    <div><dt>Team lead</dt><dd><span className="lead-avatar">{selectedMeetingLead?.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() ?? "TL"}</span>{selectedMeetingLead?.name ?? "Team lead not set"}</dd></div>
+                  </dl>
+                </section>
+              </div>
+              <section className="panel meeting-attendees-panel">
+                <div className="panel-heading"><div><span className="section-eyebrow">THE PEOPLE IN THE ROOM</span><h2>Invited teammates</h2></div><span className="count-pill">{selectedMeetingAttendees.length} invited</span></div>
+                {selectedMeetingAttendees.length > 0 ? (
+                  <div className="meeting-attendee-list">{selectedMeetingAttendees.map((member) => (
+                    <div className="meeting-attendee" key={member.id}>
+                      <span className={`member-avatar member-avatar-${member.status === "Joined" ? "joined" : "pending"}`}>{member.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
+                      <span><strong>{member.name}</strong><small>{member.role}{member.status === "Invite pending" ? " · Invite pending" : ""}</small></span>
+                    </div>
+                  ))}</div>
+                ) : <p className="empty-copy">There are no invitees listed for this meetup.</p>}
+              </section>
+              <section className="panel meeting-attendance-panel">
+                <div><span className="section-eyebrow">KEEP YOUR PROFILE UP TO DATE</span><h2>Did you attend?</h2><p>Marking a meetup as attended updates your total meetings in your profile.</p></div>
+                <label className="attendance-select-label" htmlFor="meeting-attendance">Your attendance</label>
+                <select id="meeting-attendance" aria-label="Your attendance" value={selectedMeeting.attendance} onChange={(event) => updateMeetingAttendance(selectedMeeting.id, event.target.value as Meeting["attendance"])}>
+                  <option>Not marked</option>
+                  <option>Attended</option>
+                  <option>Did not attend</option>
+                </select>
               </section>
             </PageSection>
           )}
@@ -1001,15 +1417,23 @@ export default function Home() {
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
           <section aria-labelledby="modal-title" aria-modal="true" className="modal-card" role="dialog">
             <button className="modal-close" aria-label="Close dialog" onClick={() => setModal(null)} type="button"><Icon name="close" size={20} /></button>
-            <span className="section-eyebrow">{modal === "task" ? "ONE THING AT A TIME" : modal === "team" || modal === "invite" ? "GOOD THINGS GROW TOGETHER" : modal === "availability" ? "A TIME THAT WORKS FOR EVERYONE" : "MAKE TIME TO CONNECT"}</span>
-            <h2 id="modal-title">{modal === "task" ? "Add a task" : modal === "team" ? "Start a team" : modal === "invite" ? "Invite a teammate" : modal === "availability" ? "Add availability" : "Plan a meetup"}</h2>
-            <p className="modal-description">{modal === "task" ? "Choose a team and teammate so everyone knows what’s next." : modal === "team" ? "Create a shared space for your next project." : modal === "invite" ? "Add a classmate to this team. Invitations are only prepared in this preview." : modal === "availability" ? "Add a teammate’s available time to find slots that overlap." : "Find a little time to get everyone on the same page."}</p>
+            <span className="section-eyebrow">{modal === "task" ? "ONE THING AT A TIME" : modal === "team" || modal === "teamBudget" || modal === "invite" ? "GOOD THINGS GROW TOGETHER" : modal === "availability" ? "A TIME THAT WORKS FOR EVERYONE" : "MAKE TIME TO CONNECT"}</span>
+            <h2 id="modal-title">{modal === "task" ? "Add a task" : modal === "team" ? "Start a team" : modal === "teamBudget" ? "Adjust project estimate" : modal === "invite" ? "Invite a teammate" : modal === "availability" ? "Add your availability" : "Plan a meetup"}</h2>
+            <p className="modal-description">{modal === "task" ? "Choose a team and teammate so everyone knows what’s next." : modal === "team" ? "Create a shared space and set a realistic hour budget for the project." : modal === "teamBudget" ? `Update the total hours for ${budgetEditGroup?.groupName ?? "this project"}. The estimate can’t be lower than hours already planned for tasks.` : modal === "invite" ? "Add a classmate to this team. Invitations are only prepared in this preview." : modal === "availability" ? "Choose a date and time window when you’re free. Your submission is shared with the team lead." : "Find a little time to get everyone on the same page."}</p>
             <form className="modal-form" onSubmit={handleCreate}>
               {(modal === "task" || modal === "team" || modal === "meeting") && <>
                 <label htmlFor="create-title">{modal === "team" ? "Team name" : modal === "meeting" ? "Meetup title" : "Task name"}</label>
                 <input id="create-title" name="title" placeholder={modal === "team" ? "e.g. Biology study group" : modal === "meeting" ? "e.g. Weekly project check-in" : "e.g. Review project outline"} required />
               </>}
-              {modal === "team" && <><label htmlFor="description">A little about this team <span className="optional">(optional)</span></label><textarea id="description" name="description" placeholder="What are you working on together?" rows={3} /></>}
+              {(modal === "team" || modal === "teamBudget") && <>
+                {modal === "teamBudget" && <input type="hidden" name="groupId" value={budgetEditGroupId ?? ""} />}
+                <label htmlFor="project-estimate">Estimated project time <span className="optional">(hours)</span></label>
+                <input id="project-estimate" name="estimatedProjectHours" type="number" min={modal === "teamBudget" ? Math.max(budgetEditTaskHours, 0.01) : 0.01} step="0.01" defaultValue={modal === "teamBudget" ? budgetEditGroup?.estimatedProjectHours : undefined} placeholder="e.g. 40" required />
+                <p className="estimate-help">The team lead sets the total hours available for this project. Task estimates can’t exceed it.</p>
+              </>}
+              {modal === "team" && <>
+                <label htmlFor="description">A little about this team <span className="optional">(optional)</span></label><textarea id="description" name="description" placeholder="What are you working on together?" rows={3} />
+              </>}
               {(modal === "task" || modal === "meeting") && <>
                 <label htmlFor="groupId">Team</label>
                 <select id="groupId" name="groupId" value={modalGroupId} onChange={(event) => setModalGroupId(Number(event.target.value))} required>
@@ -1022,9 +1446,24 @@ export default function Home() {
                   <option value="">Unassigned</option>
                   {(teamMembers[modalGroupId] ?? []).filter((member) => member.status === "Joined").map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
                 </select>
-                <div className="form-two-columns"><div><label htmlFor="due">Due date</label><input id="due" name="due" placeholder="e.g. Nov 15" /></div><div><label htmlFor="priority">Priority</label><select id="priority" name="priority"><option>Medium</option><option>High</option><option>Low</option></select></div></div>
+                <div className="estimate-budget-note" aria-live="polite">
+                  Project estimate: <strong>{modalGroupTaskHours.toFixed(1)} / {modalGroup?.estimatedProjectHours ?? 0} hours planned</strong>
+                </div>
+                <div className="form-two-columns">
+                  <div><label htmlFor="due">Due date</label><input id="due" name="due" type="date" /></div>
+                  <div><label htmlFor="task-estimate">Estimated time <span className="optional">(hours)</span></label><input id="task-estimate" name="estimatedHours" type="number" min="0.01" step="0.01" placeholder="e.g. 4" required /></div>
+                  <div className="full-form-field"><label htmlFor="priority">Priority</label><select id="priority" name="priority"><option>Medium</option><option>High</option><option>Low</option></select></div>
+                </div>
               </>}
-              {modal === "meeting" && <div className="form-two-columns"><div><label htmlFor="date">Date</label><input id="date" name="date" type="date" value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} required /></div><div><label htmlFor="time">Start time</label><input id="time" name="time" type="time" value={meetingStart} onChange={(event) => setMeetingStart(event.target.value)} required /></div><div className="full-form-field"><label htmlFor="location">Where <span className="optional">(optional)</span></label><input id="location" name="location" placeholder="Room or meeting link" /></div></div>}
+              {modal === "meeting" && <>
+                <div className="form-two-columns">
+                  <div><label htmlFor="date">Date</label><input id="date" name="date" type="date" value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} required /></div>
+                  <div><label htmlFor="time">Start time</label><input id="time" name="time" type="time" value={meetingStart} onChange={(event) => setMeetingStart(event.target.value)} required /></div>
+                  <div className="full-form-field"><label htmlFor="meeting-type">Meetup type</label><select id="meeting-type" name="meetingType" value={meetingType} onChange={(event) => setMeetingType(event.target.value as Meeting["type"])}><option>In person</option><option>Online</option></select></div>
+                  <div className="full-form-field"><label htmlFor="location">{meetingType === "Online" ? "Google Meet link" : "Location"}</label><input id="location" name="location" type={meetingType === "Online" ? "url" : "text"} placeholder={meetingType === "Online" ? "https://meet.google.com/..." : "e.g. Library · Room 204"} required /></div>
+                  <div className="full-form-field"><label htmlFor="agenda">Agenda <span className="optional">(one item per line)</span></label><textarea id="agenda" name="agenda" placeholder={"e.g. Review project progress\nAssign next steps"} rows={3} /></div>
+                </div>
+              </>}
               {modal === "invite" && <>
                 <input type="hidden" name="groupId" value={modalGroupId} />
                 <label htmlFor="invite-email">Teammate’s email</label><input id="invite-email" name="email" type="email" placeholder="classmate@university.edu" autoComplete="email" required />
@@ -1032,13 +1471,11 @@ export default function Home() {
               </>}
               {modal === "availability" && <>
                 <input type="hidden" name="groupId" value={modalGroupId} />
-                <label htmlFor="memberId">Teammate</label>
-                <select id="memberId" name="memberId" required>
-                  {(teamMembers[modalGroupId] ?? []).filter((member) => member.status === "Joined").map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-                </select>
+                <p className="availability-owner-note">Adding availability as <strong>{userName}</strong>. Only your own account can submit these times.</p>
                 <div className="form-two-columns"><div className="full-form-field"><label htmlFor="availability-date">Date</label><input id="availability-date" name="date" type="date" required /></div><div><label htmlFor="availability-start">Available from</label><input id="availability-start" name="start" type="time" required /></div><div><label htmlFor="availability-end">Available until</label><input id="availability-end" name="end" type="time" required /></div></div>
               </>}
-              <div className="modal-actions"><button className="button button-quiet" onClick={() => setModal(null)} type="button">Cancel</button><button className="button button-primary" type="submit">{modal === "task" ? "Add task" : modal === "team" ? "Create team" : modal === "invite" ? "Prepare invite" : modal === "availability" ? "Save availability" : "Schedule meetup"} <Icon name="arrow" size={15} /></button></div>
+              {formError && (modal === "task" || modal === "team" || modal === "teamBudget" || modal === "availability") && <p className="form-error" role="alert">{formError}</p>}
+              <div className="modal-actions"><button className="button button-quiet" onClick={() => setModal(null)} type="button">Cancel</button><button className="button button-primary" type="submit">{modal === "task" ? "Add task" : modal === "team" ? "Create team" : modal === "teamBudget" ? "Save estimate" : modal === "invite" ? "Prepare invite" : modal === "availability" ? "Save availability" : "Schedule meetup"} <Icon name="arrow" size={15} /></button></div>
             </form>
           </section>
         </div>
@@ -1142,13 +1579,36 @@ function formatDateLabel(date: string): string {
   });
 }
 
+function getTodayISO(): string {
+  const today = new Date();
+  const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function formatTaskDueDate(date: string): string {
+  if (!date) return "No due date";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatFocusDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours === 0) return `${minutes}m`;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 function TaskRow({ task, onToggle }: { task: Task; onToggle: (id: number) => void }) {
   return (
     <div className="task-row">
       <button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => onToggle(task.id)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button>
       <div className="task-row-copy"><strong>{task.title}</strong><span>{task.group}</span></div>
       <span className={`priority-dot priority-${task.priority.toLowerCase()}`} title={`${task.priority} priority`} />
-      <span className="task-due"><Icon name="clock" size={14} /> {task.due}</span>
+      <span className="task-due"><Icon name="clock" size={14} /> {formatTaskDueDate(task.due)}</span>
     </div>
   );
 }
@@ -1158,20 +1618,20 @@ function TaskTableRow({ task, onToggle }: { task: Task; onToggle: (id: number) =
     <div className="task-table-row">
       <div className="table-task-title"><button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => onToggle(task.id)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button><span className={task.status === "Completed" ? "completed-title" : ""}>{task.title}</span></div>
       <span className="table-team">{task.group}</span>
-      <span className="table-due">{task.due}</span>
+      <span className="table-due">{formatTaskDueDate(task.due)}</span>
       <span><span className={`priority-pill priority-pill-${task.priority.toLowerCase()}`}><span />{task.priority}</span></span>
       <span><span className={`status-pill status-${task.status.toLowerCase().replace(" ", "-")}`}><span />{task.status}</span></span>
     </div>
   );
 }
 
-function MeetingRow({ meeting, roomy = false }: { meeting: Meeting; roomy?: boolean }) {
+function MeetingRow({ meeting, roomy = false, onOpen }: { meeting: Meeting; roomy?: boolean; onOpen: () => void }) {
   return (
-    <article className={`meeting-row ${roomy ? "meeting-roomy" : ""}`}>
+    <button className={`meeting-row ${roomy ? "meeting-roomy" : ""}`} onClick={onOpen} type="button" aria-label={`View details for ${meeting.title}`}>
       <div className="meeting-date"><span>{meeting.date.split(" ")[0].replace(",", "")}</span><strong>{meeting.date.match(/\d+/)?.[0] ?? "—"}</strong></div>
-      <div className="meeting-copy"><strong>{meeting.title}</strong><span>{meeting.group} · {meeting.time}</span><small><Icon name="pin" size={13} /> {meeting.location}</small></div>
-      <button className="meeting-arrow" aria-label={`View ${meeting.title}`} type="button"><Icon name="chevron" size={17} /></button>
-    </article>
+      <span className="meeting-copy"><strong>{meeting.title}</strong><span>{meeting.group} · {meeting.time}</span><small><Icon name={meeting.type === "Online" ? "arrow" : "pin"} size={13} /> {meeting.type === "Online" ? "Online meetup" : meeting.location}</small></span>
+      <span className="meeting-arrow"><Icon name="chevron" size={17} /></span>
+    </button>
   );
 }
 

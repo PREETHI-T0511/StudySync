@@ -19,7 +19,9 @@ CREATE TABLE `GROUP` (
     description TEXT,
     created_date DATE NOT NULL,
     created_by INT,
-    FOREIGN KEY (created_by) REFERENCES STUDENT(student_id)
+    project_estimated_hrs DECIMAL(8,2) NOT NULL,
+    FOREIGN KEY (created_by) REFERENCES STUDENT(student_id),
+    CONSTRAINT chk_project_estimated_hrs CHECK (project_estimated_hrs > 0)
 );
 
 CREATE TABLE GROUP_MEMBER (
@@ -50,7 +52,7 @@ CREATE TABLE TASK (
     deadline DATE,
     priority VARCHAR(20) DEFAULT 'Medium',
     status VARCHAR(30) DEFAULT 'Pending',
-    estimated_hrs DECIMAL(5,2),
+    estimated_hrs DECIMAL(8,2) NOT NULL,
     FOREIGN KEY (group_id) REFERENCES `GROUP`(group_id),
     CONSTRAINT chk_estimated_hrs CHECK (estimated_hrs > 0),
     CONSTRAINT chk_priority CHECK (priority IN ('Low', 'Medium', 'High')),

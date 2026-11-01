@@ -11,10 +11,10 @@ VALUES
 ('Karan Mehta', 'karan@gmail.com', 'REPLACE_WITH_PASSWORD_HASH', 'ECE', 5, 7.50);
 
 INSERT INTO `GROUP`
-(group_name, description, created_date, created_by)
+(group_name, description, created_date, created_by, project_estimated_hrs)
 VALUES
-('Database Project Team', 'Working on the DBMS project', '2026-10-01', 1),
-('Web Development Team', 'Working on the web application', '2026-10-02', 2);
+('Database Project Team', 'Working on the DBMS project', '2026-10-01', 1, 24),
+('Web Development Team', 'Working on the web application', '2026-10-02', 2, 20);
 
 INSERT INTO GROUP_MEMBER
 (group_id, student_id, role, joined_date)
