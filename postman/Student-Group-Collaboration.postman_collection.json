@@ -1,0 +1,30 @@
+{
+  "info": {
+    "_postman_id": "fba52976-6f05-4d72-9269-7ea223fcd801",
+    "name": "Student Group Collaboration",
+    "description": "Local development requests for the Student Group Collaboration API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/health"
+      }
+    },
+    {
+      "name": "List groups",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/groups"
+      }
+    }
+  ]
+}
