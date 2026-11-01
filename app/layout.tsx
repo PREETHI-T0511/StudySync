@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "StudyCircle | Student Collaboration",
+  title: "StudySync | Student Collaboration",
   description:
-    "Coordinate student groups, project tasks, availability, and meetings.",
+    "A calm, collaborative space to organize student teams, tasks, and meetings.",
 };
 
 export default function RootLayout({

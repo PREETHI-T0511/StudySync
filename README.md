@@ -143,6 +143,36 @@ The scripts use the `student_group_collaboration` database. Run them with the My
 - View group details.
 - Add students as group members.
 
+### Tasks, Meetings, and Collaboration
+- Create tasks for a group, set a due date and priority, and update task progress.
+- Assign tasks to joined teammates, reassign them from the team workspace, and filter tasks by ownership, progress, and completion.
+- Schedule group meetings with a date, time, and location.
+- Invite teammates, track pending invitations, and add each teammate’s availability to find overlapping free slots for a meeting.
+- Review group membership, task progress, and upcoming meetings from the dashboard.
+- Use a focused 25-minute timer to make space for individual work.
+
+### Frontend preview
+The Next.js frontend includes sign-in and account-creation preview forms and an interactive student workspace
+with overview, teams, tasks, schedule, and focus views. The frontend preview uses
+sample tasks and meetings so the workspace can be explored before all backend
+features are connected. Group cards load from `GET /api/groups` when the database
+is configured; if that request fails, the dashboard displays a notice and sample
+teams instead.
+
+Open a team card to view that team’s tasks, assign or reassign teammates, prepare
+an invitation, add availability, and schedule a meetup from a suggested common
+time. Sample availability is included for the demo teams. Newly prepared invites
+and task, meeting, and availability changes are held in browser memory only:
+invites are not emailed and changes do not persist or write to MySQL. Connect
+these interactions to authenticated API routes before using them with real teams.
+
+Sign-in and account creation are currently frontend-only previews: submitting
+either form opens the workspace, but accounts are not saved and users are not
+authenticated. Do not use them to protect real student data. Before deployment,
+connect the forms to the authentication and session
+handling described in the technology stack, and persist task, group, and meeting
+changes through validated API routes.
+
 ## 7. Project structure
 
 ```text
