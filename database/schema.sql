@@ -13,6 +13,18 @@ CREATE TABLE STUDENT (
     CONSTRAINT chk_cgpa CHECK (cgpa BETWEEN 0 AND 10)
 );
 
+CREATE TABLE STUDENT_SESSION (
+    session_id CHAR(64) PRIMARY KEY,
+    student_id INT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_student_session_expiry (student_id, expires_at),
+    CONSTRAINT fk_student_session_student
+        FOREIGN KEY (student_id)
+        REFERENCES STUDENT(student_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE `GROUP` (
     group_id INT AUTO_INCREMENT PRIMARY KEY,
     group_name VARCHAR(100) NOT NULL,
@@ -32,6 +44,19 @@ CREATE TABLE GROUP_MEMBER (
     PRIMARY KEY (group_id, student_id),
     FOREIGN KEY (group_id) REFERENCES `GROUP`(group_id),
     FOREIGN KEY (student_id) REFERENCES STUDENT(student_id)
+);
+
+CREATE TABLE GROUP_INVITATION (
+    invitation_id INT AUTO_INCREMENT PRIMARY KEY,
+    group_id INT NOT NULL,
+    invited_email VARCHAR(100) NOT NULL,
+    invitation_token_hash CHAR(64) NOT NULL UNIQUE,
+    invited_by INT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (group_id, invited_email),
+    FOREIGN KEY (group_id) REFERENCES `GROUP`(group_id) ON DELETE CASCADE,
+    FOREIGN KEY (invited_by) REFERENCES STUDENT(student_id) ON DELETE CASCADE
 );
 
 CREATE TABLE AVAILABILITY (

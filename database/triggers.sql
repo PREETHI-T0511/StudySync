@@ -1,6 +1,7 @@
 USE student_group_collaboration;
 
 DROP TRIGGER IF EXISTS check_task_assignment_hours;
+DROP TRIGGER IF EXISTS check_task_assignment_hours_update;
 DROP TRIGGER IF EXISTS check_task_project_estimate_insert;
 DROP TRIGGER IF EXISTS check_task_project_estimate_update;
 DROP TRIGGER IF EXISTS check_group_project_estimate_update;
@@ -23,6 +24,30 @@ BEGIN
     INTO total_hours
     FROM TASK_ASSIGNMENT
     WHERE task_id = NEW.task_id;
+
+    IF total_hours + NEW.assigned_hours > estimated_hours THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Assigned hours exceed estimated task hours';
+    END IF;
+END//
+
+CREATE TRIGGER check_task_assignment_hours_update
+BEFORE UPDATE ON TASK_ASSIGNMENT
+FOR EACH ROW
+BEGIN
+    DECLARE total_hours DECIMAL(10,2);
+    DECLARE estimated_hours DECIMAL(10,2);
+
+    SELECT estimated_hrs
+    INTO estimated_hours
+    FROM TASK
+    WHERE task_id = NEW.task_id;
+
+    SELECT COALESCE(SUM(assigned_hours), 0)
+    INTO total_hours
+    FROM TASK_ASSIGNMENT
+    WHERE task_id = NEW.task_id
+      AND assignment_id <> OLD.assignment_id;
 
     IF total_hours + NEW.assigned_hours > estimated_hours THEN
         SIGNAL SQLSTATE '45000'

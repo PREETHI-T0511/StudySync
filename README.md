@@ -33,8 +33,8 @@ The system uses MySQL as its primary relational database and Next.js for the web
 | Relational Database | MySQL |
 | Database Connectivity | mysql2 |
 | Database Development | MySQL Workbench |
-| Authentication | Auth.js or secure session-based authentication |
-| Password Hashing | bcrypt |
+| Authentication | Signed, revocable HTTP-only sessions |
+| Password Hashing | bcryptjs |
 | Vector Database | ChromaDB (optional) |
 | Embedding Model | Sentence Transformers – all-MiniLM-L6-v2 |
 | Similarity Metric | Cosine Similarity |
@@ -74,7 +74,8 @@ MySQL is the primary source of truth. ChromaDB is used only for semantic retriev
 
 ## 5. Database Design
 
-The system consists of nine main relational tables.
+The system has nine collaboration tables plus a session table used to revoke
+authenticated sessions.
 
 | Table | Description |
 |---|---|
@@ -87,6 +88,7 @@ The system consists of nine main relational tables.
 | MEETING | Stores scheduled group meetings. |
 | MEETING_AGENDA | Stores agenda items for meetings. |
 | MEETING_PARTICIPANT | Maintains meeting participants and attendance. |
+| STUDENT_SESSION | Stores hashed session identifiers and expiry times. |
 
 ### Main Relationships
 
@@ -110,7 +112,7 @@ The `database/` directory contains the MySQL schema and supporting scripts:
 
 | File | Purpose |
 |---|---|
-| `schema.sql` | Creates the database and all nine tables. |
+| `schema.sql` | Creates the database and all eleven tables, including sessions and group invitations. |
 | `indexes.sql` | Adds indexes for task-group, deadline, and meeting lookups. |
 | `procedures.sql` | Defines `GetGroupTasks`, which lists tasks for a group ID. |
 | `queries.sql` | Provides example membership, task, meeting, and availability reports. |
@@ -119,6 +121,8 @@ The `database/` directory contains the MySQL schema and supporting scripts:
 | `triggers.sql` | Prevents task assignment hours from exceeding a task estimate and task estimates from exceeding the group's project estimate. |
 | `views.sql` | Defines `task_group_details` and the group summary view used by the dashboard. |
 | `migrations/2026-10-project-hour-estimates.sql` | One-time upgrade for existing databases created before project/task hour estimates. |
+| `migrations/2026-11-auth-sessions.sql` | Adds revocable sessions to an existing database. |
+| `migrations/2026-11-group-invitations.sql` | Adds expiring account-creation invitations to an existing database. |
 
 Run these scripts against MySQL 8.0 or later in this order:
 
@@ -132,11 +136,15 @@ Run these scripts against MySQL 8.0 or later in this order:
 
 The scripts use the `student_group_collaboration` database. Run them with the MySQL CLI, for example: `mysql -u <user> -p < database/schema.sql`. Run the seed script only once on a fresh database; the sample inserts are not designed to be re-run. Seed passwords are placeholders and must be replaced with securely generated hashes before enabling authentication.
 
-For an existing database, run `database/migrations/2026-10-project-hour-estimates.sql`
-once, then rerun `database/triggers.sql` and `database/views.sql`. The migration
-sets each existing project's estimate to its current planned task hours (or one
-hour if it has no tasks), and fills missing task estimates with one hour. Do not
-run this migration on a fresh database created from `schema.sql`.
+For an existing database created before project/task hour estimates, run
+`database/migrations/2026-10-project-hour-estimates.sql` once. For databases
+created before authentication was added, run
+`database/migrations/2026-11-auth-sessions.sql` once. Then rerun
+`database/migrations/2026-11-group-invitations.sql` once to enable account
+invitation links. Then rerun
+`database/triggers.sql`, `database/indexes.sql`, `database/views.sql`, and
+`database/procedures.sql` as needed. Do not run these migrations on a fresh
+database created from `schema.sql`.
 
 ## 6. Features
 
@@ -158,44 +166,25 @@ run this migration on a fresh database created from `schema.sql`.
 - Assign tasks to joined teammates, reassign them from the team workspace, and filter tasks by ownership, progress, and completion.
 - Schedule group meetings with a date, time, and location.
 - Open scheduled meetings to review their agenda, date and time, project, team lead, invitees, and online link or in-person location; record attendance to update the profile total.
-- Invite teammates, track pending invitations, and let every joined teammate submit their own availability; team leads can review the team’s submissions and use overlapping free slots to plan meetings.
+- Add existing students directly to a team, or create a seven-day, email-bound signup link for a classmate who does not yet have an account. Every joined teammate can submit their own availability, while team leads can review submissions and use overlapping free slots to plan meetings.
 - Review group membership, task progress, and upcoming meetings from the dashboard.
 - Use a focused 25-minute timer to make space for individual work.
 - View upcoming-meeting notifications, teammate and project profile stats, focus time, and achievement badges.
 - Choose task deadlines using a calendar date picker.
 
-### Frontend preview
-The Next.js frontend includes sign-in and account-creation preview forms and an interactive student workspace
-with overview, teams, tasks, schedule, and focus views. The frontend preview uses
-sample tasks and meetings so the workspace can be explored before all backend
-features are connected. Group cards load from `GET /api/groups` when the database
-is configured; if that request fails, the dashboard displays a notice and sample
-teams instead.
+### Web application
+The Next.js workspace preserves the existing StudySync interface and loads
+groups, tasks, meetings, participants, and availability from authenticated API
+routes. Students can register, sign in/out, and update their profiles. Team
+leaders can create groups, add existing students, set project-hour budgets,
+create tasks, assign tasks, and schedule meetings with agenda items. Members
+can update their own availability and attendance; server-side authorization
+protects API operations.
 
-Open a team card to view that team’s tasks, assign or reassign teammates, prepare
-an invitation, add your own availability, and schedule a meetup from a suggested common
-time. Team leads can review submitted availability for each teammate. Team leads can set a project-hour budget, adjust it later, and see planned
-task hours; adding a task that exceeds the budget is blocked. Sample availability is included for the demo teams. Newly prepared invites
-and task, meeting, and availability changes are held in browser memory only:
-invites are not emailed and changes do not persist or write to MySQL. Connect
-these interactions to authenticated API routes before using them with real teams.
-
-The notification dropdown summarizes upcoming meetings. The profile dropdown
-shows the signed-in preview name and email, joined teammates, current project and
-attendance counts, time accumulated in the focus timer, and achievement badges.
-These profile stats are calculated from the current in-memory preview data; focus
-time is counted while the timer is running.
-
-Select a meetup from the schedule to open its details and update your attendance.
-Meeting agendas, invitees, attendance, and meeting locations or links are also
-preview data until meeting API routes are connected.
-
-Sign-in and account creation are currently frontend-only previews: submitting
-either form opens the workspace, but accounts are not saved and users are not
-authenticated. Do not use them to protect real student data. Before deployment,
-connect the forms to the authentication and session
-handling described in the technology stack, and persist task, group, and meeting
-changes through validated API routes.
+The focus timer and achievement indicators are browser-session UI features;
+focus time is not persisted to MySQL. Email delivery and password recovery are
+not configured. See [the API and setup guide](docs/README.md) for route access,
+database setup, and Postman instructions.
 
 ## 7. Project structure
 
@@ -213,12 +202,13 @@ postman/      Postman API collection
 ## 8. Run the application
 
 1. Install dependencies with `npm install`.
-2. Copy `.env.example` to `.env.local` and fill in your MySQL connection values.
+2. Copy `.env.example` to `.env.local`, configure the MySQL connection, and set
+   `SESSION_SECRET` to a random secret of at least 32 characters.
 3. Run the database scripts in the order listed above.
 4. Start the application with `npm run dev`.
 5. Open `http://localhost:3000`.
 
-The dashboard uses `GET /api/groups` and the `v_group_overview` view. Use
-`GET /api/health` to check the database connection. See [docs/README.md](docs/README.md)
+The dashboard uses the `v_group_overview` view. Use `GET /api/health` to check
+the database connection. See [docs/README.md](docs/README.md)
 and import [the Postman collection](postman/Student-Group-Collaboration.postman_collection.json)
 for API details.

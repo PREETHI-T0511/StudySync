@@ -19,7 +19,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: "DM Sans", Arial, Helvetica, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -64,20 +64,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .login-panel { display: flex; flex-direction: column; justify-content: center; padding: 56px clamp(48px, 8vw, 120px); }
 .mobile-brand { display: none; }
 .login-form-wrap { width: min(390px, 100%); margin: auto; }
-.form-kicker, .section-eyebrow { color: #987eae; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; }
+.form-kicker, .section-eyebrow { color: #987eae; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
 .login-form-wrap h2 { margin: 13px 0 7px; color: #30243f; font-family: "Manrope", sans-serif; font-size: 28px; letter-spacing: -0.055em; }
 .form-lede { margin: 0 0 32px; color: var(--muted); font-size: 14px; }
 .login-form { display: flex; flex-direction: column; }
-.login-form > label, .label-row label, .modal-form > label, .form-two-columns label { margin-bottom: 8px; color: #433c4d; font-size: 12px; font-weight: 600; }
+.login-form > label, .label-row label, .modal-form > label, .form-two-columns label { margin-bottom: 8px; color: #433c4d; font-size: 13px; font-weight: 600; }
 .input-wrap { display: flex; height: 49px; align-items: center; gap: 11px; margin-bottom: 20px; padding: 0 14px; border: 1px solid #e8e1e9; border-radius: 9px; background: #fff; color: #9c92a5; }
 .input-wrap:focus-within { border-color: #ad97c3; box-shadow: 0 0 0 3px rgb(137 105 190 / 10%); }
-.input-wrap input { width: 100%; height: 100%; border: 0; outline: 0; background: transparent; color: var(--foreground); font-size: 13px; }
+.input-wrap input { width: 100%; height: 100%; border: 0; outline: 0; background: transparent; color: var(--foreground); font-size: 14px; }
 .input-wrap input::placeholder { color: #b0aab6; }
 .label-row { display: flex; align-items: center; justify-content: space-between; }
 .label-row a, .signup-prompt button { color: var(--primary); font-size: 11px; font-weight: 600; text-decoration: none; }
 .remember-row { display: flex; align-items: center; gap: 9px; margin: -1px 0 23px; color: #777181; font-size: 12px; cursor: pointer; }
 .remember-row input { width: 15px; height: 15px; accent-color: var(--primary); }
-.button { display: inline-flex; min-height: 43px; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
+.button { display: inline-flex; min-height: 43px; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
 .button:hover { transform: translateY(-1px); }
 .button-primary { padding: 0 17px; background: var(--primary); color: #fff; box-shadow: 0 5px 13px rgb(89 63 137 / 16%); }
 .button-primary:hover { background: var(--primary-dark); }
@@ -130,7 +130,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .breadcrumb svg { color: #b4aeb5; }.breadcrumb strong { color: #5b5361; font-weight: 600; }
 .topbar-actions { position: relative; display: flex; align-items: center; gap: 18px; }
 .global-search { display: flex; width: clamp(180px, 23vw, 270px); height: 35px; align-items: center; gap: 9px; padding: 0 9px; border: 1px solid #ece7e0; border-radius: 7px; background: #fffefa; color: #a29ba5; }
-.global-search input, .inline-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #51495a; font-size: 11px; }
+.global-search input, .inline-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #51495a; font-size: 13px; }
 .global-search input::placeholder, .inline-search input::placeholder { color: #aaa4ad; }
 .global-search kbd { flex: 0 0 auto; padding: 3px 4px; border: 1px solid #eee9e4; border-radius: 4px; color: #aba5ac; font-family: inherit; font-size: 8px; }
 .icon-button { position: relative; display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #817989; cursor: pointer; }
@@ -286,9 +286,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .modal-card { position: relative; width: min(445px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; padding: 29px; border: 1px solid #eee8e1; border-radius: 13px; background: #fffefa; box-shadow: 0 22px 70px rgb(33 24 41 / 20%); }
 .modal-close { position: absolute; top: 17px; right: 17px; display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid #eee9e3; border-radius: 7px; background: #fffefa; color: #89818e; cursor: pointer; }
 .modal-card h2 { margin: 8px 0 5px; color: #3d3248; font-family: "Manrope", sans-serif; font-size: 23px; letter-spacing: -0.05em; }
-.modal-description { margin: 0 0 21px; color: #958e99; font-size: 11px; }
+.modal-description { margin: 0 0 21px; color: #958e99; font-size: 12px; line-height: 1.55; }
 .modal-form { display: flex; flex-direction: column; gap: 8px; }
-.modal-form > input, .modal-form select, .modal-form textarea, .form-two-columns input { width: 100%; min-height: 39px; margin-bottom: 8px; padding: 9px 10px; border: 1px solid #e9e3dd; border-radius: 7px; background: #fff; color: #51495a; font-size: 11px; }
+.modal-form > input, .modal-form select, .modal-form textarea, .form-two-columns input { width: 100%; min-height: 39px; margin-bottom: 8px; padding: 9px 10px; border: 1px solid #e9e3dd; border-radius: 7px; background: #fff; color: #51495a; font-size: 13px; }
 .modal-form textarea { resize: vertical; }
 .modal-form input::placeholder, .modal-form textarea::placeholder { color: #b0aab4; }
 .optional { color: #aaa3ac; font-size: 9px; font-weight: 400; }
@@ -324,7 +324,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .database-notice { font-size: 10px; }.focus-card { min-height: 320px; }
 }
 @media (max-width: 430px) {
-  .breadcrumb { font-size: 10px; }.topbar { padding: 0 12px; }.global-search { width: 40vw; padding: 0 7px; }.global-search input { font-size: 10px; }.topbar-actions { gap: 5px; }
+  .breadcrumb { font-size: 10px; }.topbar { padding: 0 12px; }.global-search { width: 40vw; padding: 0 7px; }.global-search input { font-size: 13px; }.topbar-actions { gap: 5px; }
   .welcome-banner { min-height: 205px; padding: 21px 17px; }.welcome-content { max-width: 83%; }.welcome-banner h1 { font-size: 26px; }.welcome-banner .light-overline { font-size: 7px; }.welcome-banner p { max-width: 220px; line-height: 1.5; }.welcome-art { right: -145px; opacity: 0.48; }
   .stat-card { grid-template-columns: 26px 1fr; padding: 10px 9px; }.stat-icon { width: 25px; height: 25px; }.stat-label { font-size: 8px; }.stat-card > strong { font-size: 20px; }.stat-foot { font-size: 7px; }
   .panel { padding: 12px; }.panel-heading { align-items: flex-start; }.panel-heading .section-eyebrow { font-size: 6px; }.text-button { gap: 2px; font-size: 8px; }.task-row { gap: 7px; }.task-row-copy strong { font-size: 10px; }.task-due { font-size: 8px; }
@@ -350,6 +350,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .estimate-budget-note strong { color: #5b456c; font-weight: 600; }
 .estimate-help { margin: -2px 0 7px; color: #8d8492; font-size: 10px; line-height: 1.5; }
 .form-error { margin: 2px 0 5px; padding: 9px 10px; border: 1px solid #eed4d4; border-radius: 7px; background: #fff7f6; color: #9c4545; font-size: 11px; line-height: 1.5; }
+.form-success { margin: 0; color: #567d69; font-size: 13px; }
+.invite-link-note { margin: -4px 0 0; color: #898395; font-size: 12px; line-height: 1.5; }
+.invitation-banner { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #e8def1; border-radius: 9px; background: #f7f2fb; color: #625470; font-size: 14px; line-height: 1.5; }
+.invitation-banner strong { color: #45365a; }
 .team-detail-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(245px, 0.75fr); gap: 14px; }
 .team-detail-tasks, .team-members-panel, .shared-availability-panel, .team-meetings-panel { min-width: 0; }
 .team-task-row { display: flex; min-height: 57px; align-items: center; gap: 10px; border-bottom: 1px solid #f1ede8; }

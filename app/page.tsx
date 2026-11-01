@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type IconName =
   | "home"
@@ -77,6 +77,7 @@ type Task = {
   priority: "High" | "Medium" | "Low";
   status: TaskStatus;
   assignee: string;
+  assigneeStudentId?: number | null;
   initials: string;
 };
 
@@ -85,9 +86,24 @@ type Group = {
   groupName: string;
   groupDescription: string | null;
   estimatedProjectHours: number;
+  plannedTaskHours: number;
   memberCount: number;
   taskCount: number;
   completedTaskCount: number;
+  pendingTaskCount: number;
+  inProgressTaskCount: number;
+  assignedTaskCount: number;
+  leaderName: string | null;
+  isLeader: boolean;
+  isCreator: boolean;
+};
+
+type DashboardStats = {
+  totalGroups: number;
+  pendingTasks: number;
+  inProgressTasks: number;
+  completedTasks: number;
+  upcomingMeetings: number;
 };
 
 type Meeting = {
@@ -107,6 +123,7 @@ type Meeting = {
 
 type TeamMember = {
   id: string;
+  userId?: number;
   name: string;
   email: string;
   role: string;
@@ -127,47 +144,8 @@ type AvailabilitySlot = {
   end: string;
 };
 
-type ModalName = "task" | "team" | "teamBudget" | "meeting" | "invite" | "availability" | null;
+type ModalName = "task" | "team" | "teamBudget" | "meeting" | "invite" | "availability" | "profile" | null;
 type PageName = "Overview" | "My teams" | "Team details" | "Tasks" | "Schedule" | "Meeting details" | "Focus room";
-
-const initialTasks: Task[] = [
-  { id: 1, groupId: 1, title: "Finalize database schema", group: "Database Project", due: "2026-11-10", estimatedHours: 10, priority: "High", status: "In progress", assignee: "Aarav Sharma", initials: "AS" },
-  { id: 2, groupId: 1, title: "Write SQL queries", group: "Database Project", due: "2026-11-12", estimatedHours: 8, priority: "Medium", status: "To do", assignee: "Rahul Kumar", initials: "RK" },
-  { id: 3, groupId: 2, title: "Design the dashboard", group: "Web Development", due: "2026-11-15", estimatedHours: 12, priority: "High", status: "In progress", assignee: "Ananya Rao", initials: "AR" },
-  { id: 4, groupId: 2, title: "Prepare testing checklist", group: "Web Development", due: "2026-11-18", estimatedHours: 5, priority: "Low", status: "To do", assignee: "Priya Nair", initials: "PN" },
-];
-
-const initialMeetings: Meeting[] = [
-  { id: 1, groupId: 1, title: "Database design review", group: "Database Project", dateISO: "2026-11-05", date: "Thu, Nov 5", time: "10:00 AM", type: "In person", location: "Library · Room 204", agenda: ["Schema review", "Query discussion", "Next steps and task owners"], attendeeIds: ["db-aarav", "db-ananya", "db-rahul"], attendance: "Not marked" },
-  { id: 2, groupId: 2, title: "Frontend feedback", group: "Web Development", dateISO: "2026-11-06", date: "Fri, Nov 6", time: "2:00 PM", type: "Online", location: "https://meet.google.com/abc-defg-hij", agenda: ["Review dashboard designs", "Discuss testing plan", "Agree on next steps"], attendeeIds: ["web-ananya", "web-priya", "web-karan"], attendance: "Not marked" },
-];
-
-const initialGroups: Group[] = [
-  { groupId: 1, groupName: "Database Project", groupDescription: "Building a thoughtful, well-structured database.", estimatedProjectHours: 24, memberCount: 3, taskCount: 2, completedTaskCount: 1 },
-  { groupId: 2, groupName: "Web Development", groupDescription: "Designing and building our next great project.", estimatedProjectHours: 20, memberCount: 3, taskCount: 2, completedTaskCount: 1 },
-];
-
-const initialTeamMembers: Record<number, TeamMember[]> = {
-  1: [
-    { id: "db-aarav", name: "Aarav Sharma", email: "aarav@gmail.com", role: "Leader", status: "Joined" },
-    { id: "db-ananya", name: "Ananya Rao", email: "ananya@gmail.com", role: "Member", status: "Joined" },
-    { id: "db-rahul", name: "Rahul Kumar", email: "rahul@gmail.com", role: "Member", status: "Joined" },
-  ],
-  2: [
-    { id: "web-ananya", name: "Ananya Rao", email: "ananya@gmail.com", role: "Leader", status: "Joined" },
-    { id: "web-priya", name: "Priya Nair", email: "priya@gmail.com", role: "Member", status: "Joined" },
-    { id: "web-karan", name: "Karan Mehta", email: "karan@gmail.com", role: "Member", status: "Joined" },
-  ],
-};
-
-const initialAvailability: AvailabilityEntry[] = [
-  { groupId: 1, memberId: "db-aarav", date: "2026-11-05", start: "10:00", end: "12:00" },
-  { groupId: 1, memberId: "db-ananya", date: "2026-11-05", start: "11:00", end: "13:00" },
-  { groupId: 1, memberId: "db-rahul", date: "2026-11-05", start: "10:30", end: "12:30" },
-  { groupId: 2, memberId: "web-ananya", date: "2026-11-06", start: "14:00", end: "16:00" },
-  { groupId: 2, memberId: "web-priya", date: "2026-11-06", start: "14:00", end: "16:00" },
-  { groupId: 2, memberId: "web-karan", date: "2026-11-06", start: "15:00", end: "17:00" },
-];
 
 const noTeamMembers: TeamMember[] = [];
 
@@ -179,26 +157,91 @@ const navItems: { label: PageName; icon: IconName }[] = [
   { label: "Focus room", icon: "clock" },
 ];
 
+async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+    credentials: "same-origin",
+  });
+  const result = (await response.json()) as T & {
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok) {
+    throw new ApiRequestError(
+      result.error ?? `Request failed with status ${response.status}.`,
+      response.status,
+      result.code,
+    );
+  }
+  return result;
+}
+
+class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
+function isoDate(value: string | Date | null | undefined): string {
+  if (!value) return "";
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+}
+
+function taskStatus(value: string): TaskStatus {
+  if (value === "Completed") return "Completed";
+  if (value === "In Progress") return "In progress";
+  return "To do";
+}
+
 export default function Home() {
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [email, setEmail] = useState("");
+  const [invitationToken, setInvitationToken] = useState("");
+  const [invitationDetails, setInvitationDetails] = useState<{ groupName: string; email: string } | null>(null);
+  const [invitationLink, setInvitationLink] = useState("");
+  const [inviteCopyStatus, setInviteCopyStatus] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const acceptingInvitationRef = useRef<{
+    token: string;
+    promise: Promise<{ success: boolean; groupId: number; groupName: string }>;
+  } | null>(null);
   const [userName, setUserName] = useState("Student member");
   const [userEmail, setUserEmail] = useState("student@university.edu");
+  const [userId, setUserId] = useState<number | null>(null);
+  const [department, setDepartment] = useState("");
+  const [semester, setSemester] = useState<number | null>(null);
+  const [cgpa, setCgpa] = useState<number | null>(null);
   const [activePage, setActivePage] = useState<PageName>("Overview");
-  const [groups, setGroups] = useState<Group[]>(initialGroups);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [groupNotice, setGroupNotice] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [meetings, setMeetings] = useState<Meeting[]>(initialMeetings);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selectedMeetingId, setSelectedMeetingId] = useState<number | null>(null);
-  const [teamMembers, setTeamMembers] = useState<Record<number, TeamMember[]>>(initialTeamMembers);
-  const [availability, setAvailability] = useState<AvailabilityEntry[]>(initialAvailability);
+  const [teamMembers, setTeamMembers] = useState<Record<number, TeamMember[]>>({});
+  const [availability, setAvailability] = useState<AvailabilityEntry[]>([]);
   const [search, setSearch] = useState("");
   const [taskFilter, setTaskFilter] = useState("All tasks");
   const [modal, setModal] = useState<ModalName>(null);
-  const [modalGroupId, setModalGroupId] = useState<number>(initialGroups[0].groupId);
+  const [modalGroupId, setModalGroupId] = useState<number>(0);
   const [meetingDate, setMeetingDate] = useState("");
   const [meetingStart, setMeetingStart] = useState("");
+  const [meetingEnd, setMeetingEnd] = useState("");
   const [meetingType, setMeetingType] = useState<Meeting["type"]>("In person");
   const [budgetEditGroupId, setBudgetEditGroupId] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
@@ -208,60 +251,270 @@ export default function Home() {
   const [focusSpentSeconds, setFocusSpentSeconds] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("invite");
+    if (window.location.pathname === "/create-account") setCreatingAccount(true);
+    if (!token) return;
+
+    let active = true;
+    setInvitationToken(token);
+    setCreatingAccount(true);
+    void apiRequest<{ invitation: { groupName: string; email: string } }>(
+      `/api/invitations/${encodeURIComponent(token)}`,
+    )
+      .then(({ invitation }) => {
+        if (!active) return;
+        setInvitationDetails(invitation);
+        setEmail(invitation.email);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setToast(error instanceof Error ? error.message : "This invitation link is invalid.");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
-
-    async function loadGroups() {
+    async function loadAuthenticatedStudent() {
       try {
-        const response = await fetch("/api/groups");
-        const result: { groups?: Group[]; error?: string } = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error ?? "Unable to load groups.");
+        const result = await apiRequest<{ student: { studentId: number; studentName: string; email: string; department: string | null; semester: number | null; cgpa: number | null } }>(
+          "/api/auth/me",
+        );
+        if (!active) return;
+        setUserId(result.student.studentId);
+        setUserName(result.student.studentName);
+        setUserEmail(result.student.email);
+        setDepartment(result.student.department ?? "");
+        setSemester(result.student.semester);
+        setCgpa(result.student.cgpa);
+        setSignedIn(true);
+      } catch (error) {
+        if (active && error instanceof Error && !error.message.includes("Authentication")) {
+          setToast(error.message);
         }
-        if (active && result.groups) {
-          setGroups(
-            result.groups.map((group) => ({
-              ...group,
-              estimatedProjectHours: Number(group.estimatedProjectHours),
+      } finally {
+        if (active) setAuthLoading(false);
+      }
+    }
+    void loadAuthenticatedStudent();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    let active = true;
+
+    async function loadWorkspace() {
+      try {
+        setGroupNotice("Loading your workspace...");
+        const dashboardPromise = apiRequest<{
+          stats: Record<keyof DashboardStats, number | string>;
+        }>("/api/dashboard");
+        const groupResult = await apiRequest<{ groups: Group[] }>("/api/groups");
+        const loadedGroups = groupResult.groups.map((group) => ({
+          ...group,
+          estimatedProjectHours: Number(group.estimatedProjectHours),
+          plannedTaskHours: Number(group.plannedTaskHours),
+        }));
+        const [memberResults, taskResults, meetingResults, availabilityResults] =
+          await Promise.all([
+            Promise.all(
+              loadedGroups.map((group) =>
+                apiRequest<{ members: Array<{ studentId: number; studentName: string; email: string; role: string }> }>(
+                  `/api/groups/${group.groupId}/members`,
+                ),
+              ),
+            ),
+            Promise.all(
+              loadedGroups.map((group) =>
+                apiRequest<{ tasks: Array<Record<string, unknown> & { assignments: Array<{ studentId: number; studentName: string; assignedHours: number | string }> }> }>(
+                  `/api/groups/${group.groupId}/tasks`,
+                ),
+              ),
+            ),
+            Promise.all(
+              loadedGroups.map((group) =>
+                apiRequest<{ meetings: Array<Record<string, unknown>> }>(
+                  `/api/meetings?groupId=${group.groupId}`,
+                ),
+              ),
+            ),
+            Promise.all(
+              loadedGroups.map((group) =>
+                apiRequest<{ availability: Array<Record<string, unknown>> }>(
+                  `/api/availability?groupId=${group.groupId}`,
+                ),
+              ),
+            ),
+          ]);
+
+        const membersByGroup: Record<number, TeamMember[]> = {};
+        memberResults.forEach((result, index) => {
+          membersByGroup[loadedGroups[index].groupId] = result.members.map((member) => ({
+            id: String(member.studentId),
+            userId: member.studentId,
+            name: member.studentName,
+            email: member.email,
+            role: member.role,
+            status: "Joined",
+          }));
+        });
+
+        const loadedTasks: Task[] = taskResults.flatMap((result, index) =>
+          result.tasks.map((rawTask) => {
+            const assignments = rawTask.assignments ?? [];
+            const ownAssignment = assignments.find(
+              (assignment) => assignment.studentId === userId,
+            );
+            const assignment = ownAssignment ?? assignments[0];
+            const taskName = String(rawTask.task_title ?? "");
+            const assignee = assignment?.studentName ?? "Unassigned";
+            return {
+              id: Number(rawTask.task_id),
+              groupId: loadedGroups[index].groupId,
+              title: taskName,
+              group: loadedGroups[index].groupName,
+              due: isoDate(rawTask.deadline as string | Date | null),
+              estimatedHours: Number(rawTask.estimated_hrs),
+              priority: String(rawTask.priority) as Task["priority"],
+              status: taskStatus(String(rawTask.status)),
+              assignee,
+              assigneeStudentId: assignment?.studentId ?? null,
+              initials: assignee === "Unassigned"
+                ? "--"
+                : assignee.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(),
+            };
+          }),
+        );
+
+        const meetingRows = meetingResults.flatMap((result) => result.meetings);
+        const loadedMeetings = await Promise.all(
+          meetingRows.map(async (meeting) => {
+            const detail = await apiRequest<{
+              agenda: Array<{ agendaTitle: string }>;
+              participants: Array<{ studentId: number }>;
+            }>(`/api/meetings/${Number(meeting.meetingId)}`);
+            const dateISO = isoDate(meeting.meetingDate as string | Date);
+            const startTime = String(meeting.startTime ?? "").slice(0, 5);
+            const endTime = String(meeting.endTime ?? "").slice(0, 5);
+            const attendanceStatus = String(meeting.attendanceStatus ?? "");
+            return {
+              id: Number(meeting.meetingId),
+              groupId: Number(meeting.groupId),
+              title: String(meeting.title),
+              group: String(meeting.groupName),
+              dateISO,
+              date: dateISO
+                ? new Date(`${dateISO}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+                : "",
+              time: `${formatDisplayTime(startTime)} – ${formatDisplayTime(endTime)}`,
+              type: String(meeting.location ?? "").startsWith("http") ? "Online" as const : "In person" as const,
+              location: String(meeting.location ?? "Location not set"),
+              agenda: detail.agenda.map((item) => item.agendaTitle),
+              attendeeIds: detail.participants.map((participant) => String(participant.studentId)),
+              attendance:
+                attendanceStatus === "Attended"
+                  ? "Attended" as const
+                  : attendanceStatus === "Absent"
+                    ? "Did not attend" as const
+                    : "Not marked" as const,
+            };
+          }),
+        );
+
+        const loadedAvailability: AvailabilityEntry[] = availabilityResults.flatMap(
+          (result, index) =>
+            result.availability.map((slot) => ({
+              groupId: loadedGroups[index].groupId,
+              memberId: String(slot.studentId),
+              date: isoDate(slot.availableDate as string | Date),
+              start: String(slot.startTime).slice(0, 5),
+              end: String(slot.endTime).slice(0, 5),
             })),
-          );
-          setTeamMembers((current) => {
-            const next = { ...current };
-            for (const group of result.groups ?? []) {
-              if (!next[group.groupId]) {
-                next[group.groupId] = Array.from(
-                  { length: group.memberCount },
-                  (_, index) => ({
-                    id: `group-${group.groupId}-member-${index + 1}`,
-                    name: `Team member ${index + 1}`,
-                    email: "",
-                    role: index === 0 ? "Leader" : "Member",
-                    status: "Joined" as const,
-                  }),
-                );
-              }
-            }
-            return next;
-          });
-          setGroupNotice(null);
+        );
+
+        let nextDashboardStats: DashboardStats | null = null;
+        let dashboardWarning: string | null = null;
+        try {
+          const dashboardResult = await dashboardPromise;
+          nextDashboardStats = {
+            totalGroups: Number(dashboardResult.stats.totalGroups),
+            pendingTasks: Number(dashboardResult.stats.pendingTasks),
+            inProgressTasks: Number(dashboardResult.stats.inProgressTasks),
+            completedTasks: Number(dashboardResult.stats.completedTasks),
+            upcomingMeetings: Number(dashboardResult.stats.upcomingMeetings),
+          };
+        } catch (dashboardError) {
+          dashboardWarning =
+            dashboardError instanceof Error
+              ? `Unable to load dashboard summary: ${dashboardError.message}`
+              : "Unable to load dashboard summary.";
         }
+
+        if (!active) return;
+        setGroups(loadedGroups);
+        setDashboardStats(nextDashboardStats);
+        setTeamMembers(membersByGroup);
+        setTasks(loadedTasks);
+        setMeetings(loadedMeetings);
+        setAvailability(loadedAvailability);
+        setGroupNotice(dashboardWarning);
       } catch (loadError) {
         if (active) {
           setGroupNotice(
             loadError instanceof Error
-              ? `${loadError.message} Showing sample teams until your database is connected.`
-              : "Unable to load groups. Showing sample teams until your database is connected.",
+              ? `Unable to load workspace data: ${loadError.message}`
+              : "Unable to load workspace data.",
           );
         }
       }
     }
 
-    void loadGroups();
+    void loadWorkspace();
     return () => {
       active = false;
     };
-  }, []);
+  }, [signedIn, userId, dataVersion]);
+
+  useEffect(() => {
+    if (!signedIn || !invitationToken) return;
+    let active = true;
+    if (acceptingInvitationRef.current?.token !== invitationToken) {
+      acceptingInvitationRef.current = {
+        token: invitationToken,
+        promise: apiRequest("/api/invitations/accept", {
+          method: "POST",
+          body: JSON.stringify({ token: invitationToken }),
+        }),
+      };
+    }
+    void acceptingInvitationRef.current.promise
+      .then(() => {
+        if (!active) return;
+        setInvitationToken("");
+        setInvitationDetails(null);
+        window.history.replaceState({}, "", "/workspace");
+        setDataVersion((version) => version + 1);
+        setToast("You’ve joined the invited team.");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setInvitationToken("");
+        setToast(error instanceof Error ? error.message : "Could not accept this invitation.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [signedIn, invitationToken]);
 
   useEffect(() => {
     if (!toast) return;
@@ -271,7 +524,19 @@ export default function Home() {
 
   useEffect(() => {
     setFormError("");
+    setInvitationLink("");
   }, [modal]);
+
+  useEffect(() => {
+    function focusSearch(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", focusSearch);
+    return () => document.removeEventListener("keydown", focusSearch);
+  }, []);
 
   useEffect(() => {
     if (!profileOpen && !notificationsOpen) return;
@@ -323,13 +588,13 @@ export default function Home() {
         `${task.title} ${task.group} ${task.assignee}`.toLowerCase().includes(query);
       const matchesFilter =
         taskFilter === "All tasks" ||
-        (taskFilter === "My tasks" && (task.assignee === userName || task.assignee === "You")) ||
+        (taskFilter === "My tasks" && task.assigneeStudentId === userId) ||
         (taskFilter === "To do" && task.status === "To do") ||
         (taskFilter === "In progress" && task.status === "In progress") ||
         (taskFilter === "Completed" && task.status === "Completed");
       return matchesSearch && matchesFilter;
     });
-  }, [search, taskFilter, tasks, userName]);
+  }, [search, taskFilter, tasks, userId]);
 
   const selectedTeam = groups.find((group) => group.groupId === selectedTeamId);
   const modalGroup = groups.find((group) => group.groupId === modalGroupId);
@@ -369,7 +634,7 @@ export default function Home() {
     ? availability
         .filter((entry) => {
           if (entry.groupId !== selectedTeam.groupId) return false;
-          return selectedTeamCurrentMember?.role === "Leader"
+          return selectedTeam.isLeader
             ? selectedTeamMembers.some((member) => member.id === entry.memberId)
             : entry.memberId === selectedTeamCurrentMember?.id;
         })
@@ -382,8 +647,7 @@ export default function Home() {
   const selectedTeamTasks = selectedTeam
     ? tasks.filter(
         (task) =>
-          task.groupId === selectedTeam.groupId ||
-          task.group === selectedTeam.groupName,
+          task.groupId === selectedTeam.groupId,
       )
     : [];
   const selectedTeamMeetings = selectedTeam
@@ -444,36 +708,48 @@ export default function Home() {
     setActivePage("Team details");
   }
 
+  function canUpdateTask(task: Task) {
+    return groups.find((group) => group.groupId === task.groupId)?.isLeader === true ||
+      task.assigneeStudentId === userId;
+  }
+
   function openMeeting(meetingId: number) {
     setSelectedMeetingId(meetingId);
     setActivePage("Meeting details");
     setNotificationsOpen(false);
   }
 
-  function updateMeetingAttendance(meetingId: number, attendance: Meeting["attendance"]) {
-    setMeetings((current) =>
-      current.map((meeting) =>
-        meeting.id === meetingId ? { ...meeting, attendance } : meeting,
-      ),
-    );
-    showToast(
-      attendance === "Attended"
-        ? "Meetup marked as attended. Your profile total has been updated."
-        : attendance === "Did not attend"
-          ? "Meetup marked as not attended."
-          : "Attendance is no longer marked.",
-    );
+  async function updateMeetingAttendance(meetingId: number, attendance: Meeting["attendance"]) {
+    if (!userId) return;
+    try {
+      await apiRequest(`/api/meetings/${meetingId}/participants/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          attendanceStatus:
+            attendance === "Attended"
+              ? "Attended"
+              : attendance === "Did not attend"
+                ? "Absent"
+                : "Invited",
+        }),
+      });
+      setDataVersion((version) => version + 1);
+      showToast("Your attendance has been saved.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to update attendance.");
+    }
   }
 
-  function openTaskModal(groupId = selectedTeamId ?? groups[0]?.groupId) {
+  function openTaskModal(groupId = selectedTeamId ?? groups.find((group) => group.isLeader)?.groupId) {
     if (groupId !== undefined && groupId !== null) setModalGroupId(groupId);
     setModal("task");
   }
 
-  function openMeetingModal(groupId = selectedTeamId ?? groups[0]?.groupId, slot?: AvailabilitySlot) {
+  function openMeetingModal(groupId = selectedTeamId ?? groups.find((group) => group.isLeader)?.groupId, slot?: AvailabilitySlot) {
     if (groupId !== undefined && groupId !== null) setModalGroupId(groupId);
     setMeetingDate(slot?.date ?? "");
     setMeetingStart(slot?.start ?? "");
+    setMeetingEnd(slot?.end ?? "");
     setMeetingType("In person");
     setModal("meeting");
   }
@@ -488,290 +764,216 @@ export default function Home() {
     setToast(message);
   }
 
-  function handleCreate(event: FormEvent<HTMLFormElement>) {
+  async function copyInvitationLink() {
+    try {
+      await navigator.clipboard.writeText(invitationLink);
+      setInviteCopyStatus("Invitation link copied.");
+    } catch {
+      setInviteCopyStatus("Copy is unavailable. Select the link above and copy it.");
+    }
+  }
+
+  async function handleApiCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    setFormError("");
+    let keepInviteDialogOpen = false;
 
-    if (modal === "task") {
-      const title = String(formData.get("title") ?? "").trim();
-      if (!title) return;
-      const groupId = Number(formData.get("groupId"));
-      const group = groups.find((item) => item.groupId === groupId);
-      if (!group) {
-        setFormError("Choose a team before adding this task.");
-        return;
-      }
-      const estimatedHours = Number(formData.get("estimatedHours"));
-      if (!Number.isFinite(estimatedHours) || estimatedHours <= 0) {
-        setFormError("Enter a task estimate greater than zero.");
-        return;
-      }
-      const currentTaskHours = tasks
-        .filter((task) => task.groupId === groupId)
-        .reduce((total, task) => total + task.estimatedHours, 0);
-      if (currentTaskHours + estimatedHours > group.estimatedProjectHours) {
-        setFormError(
-          `This task would bring the project to ${(currentTaskHours + estimatedHours).toFixed(1)} hours, over its ${group.estimatedProjectHours} hour estimate. Increase the project estimate or reduce task estimates before adding it.`,
-        );
-        return;
-      }
-      setFormError("");
-      const assigneeId = String(formData.get("assigneeId") ?? "");
-      const assignee = (teamMembers[groupId] ?? []).find(
-        (member) => member.id === assigneeId && member.status === "Joined",
-      );
-      setTasks((current) => [
-        {
-          id: Date.now(),
-          groupId,
-          title,
-          group: group.groupName,
-          due: String(formData.get("due") ?? ""),
-          estimatedHours,
-          priority: String(formData.get("priority") ?? "Medium") as Task["priority"],
-          status: "To do",
-          assignee: assignee?.name ?? "Unassigned",
-          initials: assignee
-            ? assignee.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()
-            : "--",
-        },
-        ...current,
-      ]);
-      setGroups((current) =>
-        current.map((item) =>
-          item.groupId === groupId ? { ...item, taskCount: item.taskCount + 1 } : item,
-        ),
-      );
-      if (selectedTeamId === groupId) {
+    try {
+      if (modal === "task") {
+        const groupId = Number(formData.get("groupId"));
+        const assigneeId = String(formData.get("assigneeId") ?? "");
+        const estimatedHours = Number(formData.get("estimatedHours"));
+        await apiRequest(`/api/groups/${groupId}/tasks`, {
+          method: "POST",
+          body: JSON.stringify({
+            taskTitle: String(formData.get("title") ?? "").trim(),
+            taskDescription: String(formData.get("description") ?? "").trim() || null,
+            deadline: String(formData.get("due") ?? "") || null,
+            priority: String(formData.get("priority") ?? "Medium"),
+            estimatedHrs: estimatedHours,
+            ...(assigneeId
+              ? { studentId: Number(assigneeId), assignedHours: estimatedHours }
+              : {}),
+          }),
+        });
+        setSelectedTeamId(groupId);
+        setActivePage(selectedTeamId === groupId ? "Team details" : "Tasks");
+        showToast("Task created and saved.");
+      } else if (modal === "team") {
+        const result = await apiRequest<{ groupId: number }>("/api/groups", {
+          method: "POST",
+          body: JSON.stringify({
+            groupName: String(formData.get("title") ?? "").trim(),
+            description: String(formData.get("description") ?? "").trim() || null,
+            projectEstimatedHours: Number(formData.get("estimatedProjectHours")),
+          }),
+        });
+        setSelectedTeamId(result.groupId);
+        setActivePage("My teams");
+        showToast("Your team has been created.");
+      } else if (modal === "teamBudget") {
+        const groupId = Number(formData.get("groupId"));
+        const group = groups.find((item) => item.groupId === groupId);
+        if (!group) throw new Error("Choose a team before editing its estimate.");
+        await apiRequest(`/api/groups/${groupId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            groupName: group.groupName,
+            description: group.groupDescription,
+            projectEstimatedHours: Number(formData.get("estimatedProjectHours")),
+          }),
+        });
+        setSelectedTeamId(groupId);
         setActivePage("Team details");
-      } else {
-        setActivePage("Tasks");
-      }
-      showToast(assignee ? `Task assigned to ${assignee.name}.` : "Your task has been added.");
-    } else if (modal === "team") {
-      const groupName = String(formData.get("title") ?? "").trim();
-      if (!groupName) return;
-      const estimatedProjectHours = Number(formData.get("estimatedProjectHours"));
-      if (!Number.isFinite(estimatedProjectHours) || estimatedProjectHours <= 0) {
-        setFormError("Enter a project estimate greater than zero.");
-        return;
-      }
-      setFormError("");
-      const groupId = Date.now();
-      setGroups((current) => [
-        ...current,
-        {
-          groupId,
-          groupName,
-          groupDescription: String(formData.get("description") ?? "").trim() || null,
-          estimatedProjectHours,
-          memberCount: 1,
-          taskCount: 0,
-          completedTaskCount: 0,
-        },
-      ]);
-      setTeamMembers((current) => ({
-        ...current,
-        [groupId]: [
+        showToast("Project estimate updated.");
+      } else if (modal === "meeting") {
+        const groupId = Number(formData.get("groupId"));
+        const result = await apiRequest<{ meetingId: number }>("/api/meetings", {
+          method: "POST",
+          body: JSON.stringify({
+            groupId,
+            meetingTitle: String(formData.get("title") ?? "").trim(),
+            meetingDate: String(formData.get("date") ?? ""),
+            startTime: String(formData.get("time") ?? ""),
+            endTime: String(formData.get("endTime") ?? ""),
+            meetingLocation: String(formData.get("location") ?? "").trim(),
+            agenda: String(formData.get("agenda") ?? "")
+              .split(/\r?\n/)
+              .map((item) => item.trim())
+              .filter(Boolean),
+          }),
+        });
+        setSelectedMeetingId(result.meetingId);
+        setActivePage("Meeting details");
+        showToast("Meeting scheduled and saved.");
+      } else if (modal === "invite") {
+        const groupId = Number(formData.get("groupId"));
+        const result = await apiRequest<{ invitationUrl?: string }>(
+          `/api/groups/${groupId}/members`,
           {
-            id: `member-${groupId}`,
-            name: userName,
-            email: userEmail,
-            role: "Leader",
-            status: "Joined",
+          method: "POST",
+          body: JSON.stringify({
+            email: String(formData.get("email") ?? "").trim(),
+          }),
           },
-        ],
-      }));
-      setSelectedTeamId(groupId);
-      setActivePage("My teams");
-      showToast("Your new team is ready.");
-    } else if (modal === "teamBudget") {
-      const groupId = Number(formData.get("groupId"));
-      const group = groups.find((item) => item.groupId === groupId);
-      const estimatedProjectHours = Number(formData.get("estimatedProjectHours"));
-      const allocatedHours = tasks
-        .filter((task) => task.groupId === groupId)
-        .reduce((total, task) => total + task.estimatedHours, 0);
-      if (!group || !Number.isFinite(estimatedProjectHours) || estimatedProjectHours <= 0) {
-        setFormError("Enter a project estimate greater than zero.");
-        return;
-      }
-      if (estimatedProjectHours < allocatedHours) {
-        setFormError(
-          `The project already has ${allocatedHours.toFixed(1)} task hours planned. Set an estimate of at least ${allocatedHours.toFixed(1)} hours.`,
         );
-        return;
+        setSelectedTeamId(groupId);
+        setActivePage("Team details");
+        if (result.invitationUrl) {
+          setInvitationLink(new URL(result.invitationUrl, window.location.origin).toString());
+          setInviteCopyStatus("");
+          keepInviteDialogOpen = true;
+          showToast("Invite link created. It expires in 7 days.");
+        } else {
+          showToast("Student added to the team.");
+        }
+      } else if (modal === "availability") {
+        await apiRequest("/api/availability", {
+          method: "POST",
+          body: JSON.stringify({
+            availableDate: String(formData.get("date") ?? ""),
+            startTime: String(formData.get("start") ?? ""),
+            endTime: String(formData.get("end") ?? ""),
+          }),
+        });
+        showToast("Availability saved.");
+      } else if (modal === "profile") {
+        const updatedName = String(formData.get("studentName") ?? "").trim();
+        const updatedDepartment = String(formData.get("department") ?? "").trim() || null;
+        const updatedSemester = String(formData.get("semester") ?? "") || null;
+        const updatedCgpa = String(formData.get("cgpa") ?? "") || null;
+        await apiRequest("/api/student/profile", {
+          method: "PATCH",
+          body: JSON.stringify({
+            studentName: updatedName,
+            department: updatedDepartment,
+            semester: updatedSemester,
+            cgpa: updatedCgpa,
+          }),
+        });
+        setUserName(updatedName);
+        setDepartment(updatedDepartment ?? "");
+        setSemester(updatedSemester === null ? null : Number(updatedSemester));
+        setCgpa(updatedCgpa === null ? null : Number(updatedCgpa));
+        setProfileOpen(false);
+        showToast("Your profile has been updated.");
       }
-      setGroups((current) =>
-        current.map((item) =>
-          item.groupId === groupId ? { ...item, estimatedProjectHours } : item,
-        ),
-      );
-      setFormError("");
-      setSelectedTeamId(groupId);
-      setActivePage("Team details");
-      showToast("Project estimate updated.");
-    } else if (modal === "meeting") {
-      const title = String(formData.get("title") ?? "").trim();
-      if (!title) return;
-      const rawDate = String(formData.get("date") ?? "");
-      const groupId = Number(formData.get("groupId"));
-      const group = groups.find((item) => item.groupId === groupId);
-      if (!group) {
-        setFormError("Choose a team before scheduling this meetup.");
-        return;
-      }
-      const meetingId = Date.now();
-      setMeetings((current) => [
-        ...current,
-        {
-          id: meetingId,
-          groupId,
-          title,
-          group: group.groupName,
-          dateISO: rawDate,
-          date: rawDate ? new Date(`${rawDate}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "Date to be set",
-          time: formatDisplayTime(String(formData.get("time") ?? "")) || "Time to be set",
-          location: String(formData.get("location") ?? "").trim() || "Location to be set",
-          type: String(formData.get("meetingType") ?? "In person") as Meeting["type"],
-          agenda: String(formData.get("agenda") ?? "")
-            .split(/\r?\n/)
-            .map((item) => item.trim())
-            .filter(Boolean),
-          attendeeIds: (teamMembers[groupId] ?? [])
-            .map((member) => member.id),
-          attendance: "Not marked",
-        },
-      ]);
-      setFormError("");
-      setSelectedMeetingId(meetingId);
-      setActivePage("Meeting details");
-      showToast("Your meeting has been scheduled.");
-    } else if (modal === "invite") {
-      const groupId = Number(formData.get("groupId"));
-      const email = String(formData.get("email") ?? "").trim();
-      const name = String(formData.get("name") ?? "").trim() || email.split("@")[0];
-      const group = groups.find((item) => item.groupId === groupId);
-      if (!group || !email) return;
-      const members = teamMembers[groupId] ?? [];
-      if (members.some((member) => member.email.toLowerCase() === email.toLowerCase())) {
-        showToast("That email is already on this team or has an invite.");
-        return;
-      }
-      const member: TeamMember = {
-        id: `invite-${Date.now()}`,
-        name,
-        email,
-        role: "Member",
-        status: "Invite pending",
-      };
-      setTeamMembers((current) => ({ ...current, [groupId]: [...members, member] }));
-      showToast(`Invite prepared for ${email}. Email delivery isn’t connected in this preview.`);
-    } else if (modal === "availability") {
-      const groupId = Number(formData.get("groupId"));
-      const date = String(formData.get("date") ?? "");
-      const start = String(formData.get("start") ?? "");
-      const end = String(formData.get("end") ?? "");
-      const currentMember = (teamMembers[groupId] ?? []).find(
-        (member) =>
-          member.status === "Joined" &&
-          member.email.toLowerCase() === userEmail.toLowerCase(),
-      );
-      if (!groupId || !currentMember) {
-        setFormError("You need to be a joined team member to add your availability.");
-        return;
-      }
-      if (!date || !start || !end || start >= end) {
-        setFormError("Choose a date and a valid time window.");
-        return;
-      }
-      const duplicate = availability.some(
-        (entry) =>
-          entry.groupId === groupId &&
-          entry.memberId === currentMember.id &&
-          entry.date === date &&
-          entry.start === start &&
-          entry.end === end,
-      );
-      if (duplicate) {
-        setFormError("You’ve already added this availability window.");
-        return;
-      }
-      setAvailability((current) => [
-        ...current,
-        { groupId, memberId: currentMember.id, date, start, end },
-      ]);
-      showToast("Your availability is saved and shared with the team lead.");
+
+      if (!keepInviteDialogOpen) setModal(null);
+      setDataVersion((version) => version + 1);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "The request failed.");
     }
-    setModal(null);
   }
 
-  function toggleTask(taskId: number) {
+  async function toggleTask(taskId: number) {
     const task = tasks.find((item) => item.id === taskId);
     if (!task) return;
-    const completing = task.status !== "Completed";
-    setTasks((current) =>
-      current.map((item) =>
-        item.id === taskId
-          ? { ...item, status: completing ? "Completed" : "To do" }
-          : item,
-      ),
-    );
-    setGroups((current) =>
-      current.map((group) =>
-        group.groupId === task.groupId
-          ? {
-              ...group,
-              completedTaskCount: Math.max(
-                0,
-                group.completedTaskCount + (completing ? 1 : -1),
-              ),
-            }
-          : group,
-      ),
-    );
-    showToast("Task progress updated.");
+    const group = groups.find((item) => item.groupId === task.groupId);
+    if (!group?.isLeader && task.assigneeStudentId !== userId) {
+      showToast("Only a team lead or the assigned teammate can update this task.");
+      return;
+    }
+    const status = task.status === "Completed" ? "Pending" : "Completed";
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      setDataVersion((version) => version + 1);
+      showToast("Task progress updated.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to update task.");
+    }
   }
 
-  function assignTask(taskId: number, assigneeId: string) {
+  async function assignTask(taskId: number, assigneeId: string) {
     const task = tasks.find((item) => item.id === taskId);
     if (!task) return;
     const assignee = (teamMembers[task.groupId] ?? []).find(
       (member) => member.id === assigneeId && member.status === "Joined",
     );
-    setTasks((current) =>
-      current.map((item) =>
-        item.id === taskId
-          ? {
-              ...item,
-              assignee: assignee?.name ?? "Unassigned",
-              initials: assignee
-                ? assignee.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()
-                : "--",
-            }
-          : item,
-      ),
-    );
-    showToast(assignee ? `Task assigned to ${assignee.name}.` : "Task is unassigned.");
+    try {
+      if (!assigneeId && task.assigneeStudentId) {
+        await apiRequest(`/api/tasks/${taskId}/assignments/${task.assigneeStudentId}`, {
+          method: "DELETE",
+        });
+      } else if (assignee && task.assigneeStudentId) {
+        await apiRequest(`/api/tasks/${taskId}/assignments/${task.assigneeStudentId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            studentId: assignee.userId,
+            assignedHours: task.estimatedHours,
+          }),
+        });
+      } else if (assignee) {
+        await apiRequest(`/api/tasks/${taskId}/assignments`, {
+          method: "POST",
+          body: JSON.stringify({
+            studentId: assignee.userId,
+            assignedHours: task.estimatedHours,
+          }),
+        });
+      }
+      setDataVersion((version) => version + 1);
+      showToast(assignee ? `Task assigned to ${assignee.name}.` : "Task assignment removed.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to update assignment.");
+    }
   }
 
-  function updateMemberStatus(groupId: number, memberId: string) {
-    const member = (teamMembers[groupId] ?? []).find((item) => item.id === memberId);
-    if (!member || member.status === "Joined") return;
-    setTeamMembers((current) => ({
-      ...current,
-      [groupId]: (current[groupId] ?? []).map((member) =>
-        member.id === memberId ? { ...member, status: "Joined" } : member,
-      ),
-    }));
-    setGroups((current) =>
-      current.map((group) =>
-        group.groupId === groupId
-          ? { ...group, memberCount: group.memberCount + 1 }
-          : group,
-      ),
+  if (authLoading) {
+    return (
+      <main className="login-page">
+        <section className="login-panel">
+          <div className="login-form-wrap">
+            <span className="form-kicker">STUDYSYNC</span>
+            <h2>Checking your session...</h2>
+          </div>
+        </section>
+      </main>
     );
-    showToast("Invite accepted in the preview. The teammate is now included in availability.");
   }
 
   if (!signedIn) {
@@ -819,41 +1021,91 @@ export default function Home() {
             </p>
             <form
               className="login-form"
-              onSubmit={(event) => {
+              onSubmit={async (event) => {
                 event.preventDefault();
                 const formData = new FormData(event.currentTarget);
-                const email = String(formData.get("email") ?? "").trim();
-                if (creatingAccount) {
-                  const name = String(formData.get("name") ?? "").trim();
-                  const password = String(formData.get("password") ?? "");
-                  const confirmPassword = String(formData.get("confirmPassword") ?? "");
-                  if (!name) {
-                    showToast("Enter your name to create an account.");
-                    return;
-                  }
-                  if (password !== confirmPassword) {
-                    showToast("Those passwords don’t match. Give it another try.");
-                    return;
-                  }
-                  setUserName(name);
-                } else {
-                  const accountMember = Object.values(teamMembers)
-                    .flat()
-                    .find(
-                      (member) =>
-                        member.status === "Joined" &&
-                        member.email.toLowerCase() === email.toLowerCase(),
-                    );
-                  setUserName(accountMember?.name ?? email.split("@")[0]);
+                const password = String(formData.get("password") ?? "");
+                if (creatingAccount && password !== String(formData.get("confirmPassword") ?? "")) {
+                  showToast("Those passwords don’t match.");
+                  return;
                 }
-                setUserEmail(email);
-                setSignedIn(true);
-                setActivePage("Overview");
-                if (creatingAccount) {
-                  showToast("Welcome to the StudySync preview. Your account hasn’t been saved.");
+
+                setAuthSubmitting(true);
+                try {
+                  const path = creatingAccount ? "/api/auth/register" : "/api/auth/login";
+                  const result = await apiRequest<{
+                    student: {
+                      studentId: number;
+                      studentName: string;
+                      email: string;
+                      department: string | null;
+                      semester: number | null;
+                      cgpa: number | null;
+                    };
+                  }>(path, {
+                    method: "POST",
+                    body: JSON.stringify(
+                      creatingAccount
+                        ? {
+                            studentName: String(formData.get("name") ?? "").trim(),
+                            email: String(formData.get("email") ?? "").trim(),
+                            password,
+                            department: String(formData.get("department") ?? "").trim() || null,
+                            semester: String(formData.get("semester") ?? "") || null,
+                            cgpa: String(formData.get("cgpa") ?? "") || null,
+                            ...(invitationToken ? { invitationToken } : {}),
+                          }
+                        : {
+                            email: String(formData.get("email") ?? "").trim(),
+                            password,
+                            rememberMe: formData.get("remember") === "on",
+                          },
+                    ),
+                  });
+                  if (!creatingAccount && invitationToken) {
+                    await apiRequest("/api/invitations/accept", {
+                      method: "POST",
+                      body: JSON.stringify({ token: invitationToken }),
+                    });
+                    setInvitationToken("");
+                  }
+                  if (creatingAccount && invitationToken) setInvitationToken("");
+                  setUserId(result.student.studentId);
+                  setUserName(result.student.studentName);
+                  setUserEmail(result.student.email);
+                  setDepartment(result.student.department ?? "");
+                  setSemester(result.student.semester);
+                  setCgpa(result.student.cgpa);
+                  setSignedIn(true);
+                  setActivePage("Overview");
+                  window.history.replaceState({}, "", "/workspace");
+                  showToast(creatingAccount ? "Your account is ready." : "Welcome back.");
+                } catch (error) {
+                  if (
+                    !creatingAccount &&
+                    error instanceof ApiRequestError &&
+                    error.code === "ACCOUNT_NOT_FOUND"
+                  ) {
+                    setCreatingAccount(true);
+                    showToast(
+                      invitationToken
+                        ? "No account exists for this email. Create one to accept the team invitation."
+                        : "No account exists for this email. Create a StudySync account to continue.",
+                    );
+                  } else {
+                    showToast(error instanceof Error ? error.message : "Authentication failed.");
+                  }
+                } finally {
+                  setAuthSubmitting(false);
                 }
               }}
             >
+              {invitationDetails && (
+                <p className="invitation-banner">
+                  You’ve been invited to join <strong>{invitationDetails.groupName}</strong>.
+                  Create your account with {invitationDetails.email} to join the team.
+                </p>
+              )}
               {creatingAccount && (
                 <>
                   <label htmlFor="name">Your name</label>
@@ -861,12 +1113,21 @@ export default function Home() {
                     <Icon name="users" size={18} />
                     <input id="name" name="name" type="text" placeholder="How should we call you?" autoComplete="name" required maxLength={100} />
                   </div>
+                  <label htmlFor="department">Department <span className="optional">(optional)</span></label>
+                  <div className="input-wrap">
+                    <Icon name="book" size={18} />
+                    <input id="department" name="department" type="text" placeholder="e.g. Computer Science" maxLength={100} />
+                  </div>
+                  <div className="form-two-columns">
+                    <div><label htmlFor="semester">Semester</label><input id="semester" name="semester" type="number" min="1" max="20" /></div>
+                    <div><label htmlFor="cgpa">CGPA</label><input id="cgpa" name="cgpa" type="number" min="0" max="10" step="0.01" /></div>
+                  </div>
                 </>
               )}
               <label htmlFor="email">Email address</label>
               <div className="input-wrap">
                 <Icon name="mail" size={18} />
-                <input id="email" name="email" type="email" placeholder="you@university.edu" autoComplete="email" required />
+                <input id="email" name="email" type="email" placeholder="you@university.edu" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
               </div>
               {creatingAccount ? (
                 <label htmlFor="password">Password <span className="optional">(at least 8 characters)</span></label>
@@ -878,7 +1139,7 @@ export default function Home() {
               )}
               <div className="input-wrap">
                 <Icon name="lock" size={18} />
-                <input id="password" name="password" type="password" placeholder={creatingAccount ? "Create a password" : "Enter your password"} autoComplete={creatingAccount ? "new-password" : "current-password"} required minLength={creatingAccount ? 8 : 6} />
+                <input id="password" name="password" type="password" placeholder={creatingAccount ? "Create a password" : "Enter your password"} autoComplete={creatingAccount ? "new-password" : "current-password"} required minLength={8} maxLength={128} />
               </div>
               {creatingAccount ? (
                 <>
@@ -895,17 +1156,17 @@ export default function Home() {
                 </label>
               )}
               <button className="button button-primary login-submit" type="submit">
-                {creatingAccount ? "Create account" : "Sign in"} <Icon name="arrow" size={17} />
+                {authSubmitting ? "Please wait..." : creatingAccount ? "Create account" : "Sign in"} <Icon name="arrow" size={17} />
               </button>
             </form>
             <div className="signup-prompt">
               {creatingAccount ? (
                 <>Already have an account? <button type="button" onClick={() => setCreatingAccount(false)}>Sign in</button></>
               ) : (
-                <>New to StudySync? <button type="button" onClick={() => setCreatingAccount(true)}>Create an account</button></>
+                <>New to StudySync? <button type="button" onClick={() => { setCreatingAccount(true); window.history.replaceState({}, "", "/create-account"); }}>Create an account</button></>
               )}
             </div>
-            <div className="demo-note"><span className="demo-dot" /> Frontend preview · {creatingAccount ? "Your account isn’t saved yet" : "Sign-in opens the demo workspace"}</div>
+            <div className="demo-note"><span className="demo-dot" /> Secure sign-in · Your project workspace</div>
           </div>
           <footer className="login-footer">
             <span>© 2026 StudySync</span>
@@ -920,6 +1181,14 @@ export default function Home() {
   const completedCount = tasks.filter((task) => task.status === "Completed").length;
   const inProgressCount = tasks.filter((task) => task.status === "In progress").length;
   const pendingCount = tasks.filter((task) => task.status === "To do").length;
+  const overviewCompletedCount = dashboardStats?.completedTasks ?? completedCount;
+  const overviewTaskCount =
+    dashboardStats
+      ? dashboardStats.pendingTasks + dashboardStats.inProgressTasks + dashboardStats.completedTasks
+      : tasks.length;
+  const overviewInProgressCount =
+    dashboardStats?.inProgressTasks ?? inProgressCount;
+  const overviewGroupCount = dashboardStats?.totalGroups ?? groups.length;
   const attendedMeetingsCount = meetings.filter(
     (meeting) => meeting.attendance === "Attended",
   ).length;
@@ -988,7 +1257,23 @@ export default function Home() {
           <div className="topbar-actions">
             <label className="global-search">
               <Icon name="search" size={17} />
-              <input aria-label="Search tasks" placeholder="Search tasks..." value={search} onChange={(event) => setSearch(event.target.value)} />
+              <input
+                ref={searchInputRef}
+                aria-label="Search tasks"
+                placeholder="Search tasks..."
+                value={search}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSearch(value);
+                  if (value.trim()) {
+                    setTaskFilter("All tasks");
+                    setActivePage("Tasks");
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") setActivePage("Tasks");
+                }}
+              />
               <kbd>⌘ K</kbd>
             </label>
             <div className="popover-anchor">
@@ -1070,7 +1355,19 @@ export default function Home() {
                       ))}
                     </div>
                   </div>
-                  <button className="profile-logout" onClick={() => { setSignedIn(false); setSearch(""); setProfileOpen(false); }} type="button"><Icon name="lock" size={15} /> Log out</button>
+                  <button className="profile-logout" onClick={() => { setProfileOpen(false); setModal("profile"); }} type="button"><Icon name="users" size={15} /> Edit profile</button>
+                  <button className="profile-logout" onClick={async () => {
+                    try {
+                      await apiRequest("/api/auth/logout", { method: "POST" });
+                      setSignedIn(false);
+                      setUserEmail("");
+                      setSearch("");
+                      setProfileOpen(false);
+                      window.location.assign("/");
+                    } catch (error) {
+                      setToast(error instanceof Error ? error.message : "Could not log out.");
+                    }
+                  }} type="button"><Icon name="lock" size={15} /> Log out</button>
                 </section>
               )}
             </div>
@@ -1101,12 +1398,12 @@ export default function Home() {
               <section className="stats-grid" aria-label="Task summary">
                 <article className="stat-card">
                   <span className="stat-icon violet-icon"><Icon name="check" size={17} /></span>
-                  <span className="stat-label">Tasks completed</span><strong>{completedCount}<small> / {tasks.length}</small></strong>
+                  <span className="stat-label">Tasks completed</span><strong>{overviewCompletedCount}<small> / {overviewTaskCount}</small></strong>
                   <span className="stat-foot"><span className="trend-up">↑ 2</span> from last week</span>
                 </article>
                 <article className="stat-card">
                   <span className="stat-icon peach-icon"><Icon name="clock" size={17} /></span>
-                  <span className="stat-label">In progress</span><strong>{inProgressCount.toString().padStart(2, "0")}</strong>
+                  <span className="stat-label">In progress</span><strong>{overviewInProgressCount.toString().padStart(2, "0")}</strong>
                   <span className="stat-foot">Across your teams</span>
                 </article>
                 <article className="stat-card">
@@ -1116,7 +1413,7 @@ export default function Home() {
                 </article>
                 <article className="stat-card">
                   <span className="stat-icon blue-icon"><Icon name="users" size={17} /></span>
-                  <span className="stat-label">Your teams</span><strong>{groups.length.toString().padStart(2, "0")}</strong>
+                  <span className="stat-label">Your teams</span><strong>{overviewGroupCount.toString().padStart(2, "0")}</strong>
                   <span className="stat-foot">Good things grow together</span>
                 </article>
               </section>
@@ -1129,11 +1426,11 @@ export default function Home() {
                   </div>
                   <div className="task-list compact-task-list">
                     {tasks.filter((task) => task.status !== "Completed").slice(0, 3).map((task) => (
-                      <TaskRow key={task.id} task={task} onToggle={toggleTask} />
+                      <TaskRow key={task.id} task={task} onToggle={toggleTask} canUpdate={canUpdateTask(task)} />
                     ))}
                     {pendingCount === 0 && <p className="empty-copy">All caught up. Take a little breather.</p>}
                   </div>
-                  <button className="add-inline" onClick={() => setModal("task")} type="button"><Icon name="plus" size={16} /> Add a task</button>
+                  {groups.some((group) => group.isLeader) && <button className="add-inline" onClick={() => openTaskModal()} type="button"><Icon name="plus" size={16} /> Add a task</button>}
                 </section>
 
                 <section className="panel schedule-panel">
@@ -1145,7 +1442,7 @@ export default function Home() {
                     {upcomingMeetings.slice(0, 2).map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} onOpen={() => openMeeting(meeting.id)} />)}
                     {meetings.length === 0 && <p className="empty-copy">Your calendar is open. Plan a team catch-up?</p>}
                   </div>
-                  <button className="add-inline" onClick={() => setModal("meeting")} type="button"><Icon name="plus" size={16} /> Plan a meetup</button>
+                  {groups.some((group) => group.isLeader) && <button className="add-inline" onClick={() => openMeetingModal()} type="button"><Icon name="plus" size={16} /> Plan a meetup</button>}
                 </section>
               </div>
 
@@ -1165,7 +1462,7 @@ export default function Home() {
           )}
 
           {activePage === "Tasks" && (
-            <PageSection eyebrow="A LITTLE PROGRESS GOES A LONG WAY" title="Your tasks" description="Keep an eye on what’s moving and what needs a little attention." actionLabel="New task" onAction={() => setModal("task")}>
+            <PageSection eyebrow="A LITTLE PROGRESS GOES A LONG WAY" title="Your tasks" description="Keep an eye on what’s moving and what needs a little attention." actionLabel={groups.some((group) => group.isLeader) ? "New task" : ""} onAction={() => openTaskModal()}>
               <div className="filter-bar">
                 <div className="filter-tabs" role="group" aria-label="Filter tasks">
                   {["All tasks", "My tasks", "To do", "In progress", "Completed"].map((filter) => (
@@ -1176,7 +1473,7 @@ export default function Home() {
               </div>
               <div className="panel full-task-panel">
                 <div className="task-table-head"><span>Task</span><span>Team</span><span>Due date</span><span>Priority</span><span>Status</span></div>
-                {visibleTasks.map((task) => <TaskTableRow key={task.id} task={task} onToggle={toggleTask} />)}
+                {visibleTasks.map((task) => <TaskTableRow key={task.id} task={task} onToggle={toggleTask} canUpdate={canUpdateTask(task)} />)}
                 {visibleTasks.length === 0 && <div className="empty-state"><span className="empty-state-icon"><Icon name="search" size={22} /></span><strong>No tasks found</strong><p>Try a different search or filter.</p></div>}
               </div>
               <div className="task-summary"><span>{completedCount} completed</span><span>{pendingCount} to do</span><span>{inProgressCount} in progress</span></div>
@@ -1185,10 +1482,21 @@ export default function Home() {
 
           {activePage === "My teams" && (
             <PageSection eyebrow="YOUR PEOPLE, YOUR PROJECTS" title="My teams" description="A little teamwork makes the big things feel possible." actionLabel="Create a team" onAction={() => setModal("team")}>
-              <div className="team-grid team-grid-page">
-                {groups.map((group, index) => <TeamCard group={group} index={index} key={group.groupId} onOpen={() => openTeam(group.groupId)} />)}
-                <button className="team-create-card" onClick={() => setModal("team")} type="button"><span className="create-team-icon"><Icon name="plus" size={20} /></span><strong>Start something new</strong><span>Make a space for your next big idea.</span></button>
-              </div>
+              <section className="panel teams-panel">
+                <div className="panel-heading"><div><span className="section-eyebrow">YOUR PROJECTS</span><h2>Teams I lead</h2></div><span className="count-pill">{groups.filter((group) => group.isCreator).length}</span></div>
+                <div className="team-grid team-grid-page">
+                  {groups.filter((group) => group.isCreator).map((group, index) => <TeamCard group={group} index={index} key={group.groupId} onOpen={() => openTeam(group.groupId)} />)}
+                  {groups.every((group) => !group.isCreator) && <p className="empty-copy">You haven’t created a team yet. Start one for your next project.</p>}
+                  <button className="team-create-card" onClick={() => setModal("team")} type="button"><span className="create-team-icon"><Icon name="plus" size={20} /></span><strong>Start something new</strong><span>Make a space for your next big idea.</span></button>
+                </div>
+              </section>
+              <section className="panel teams-panel">
+                <div className="panel-heading"><div><span className="section-eyebrow">YOUR COLLABORATIONS</span><h2>Teams I’m a member of</h2></div><span className="count-pill">{groups.filter((group) => !group.isCreator).length}</span></div>
+                <div className="team-grid team-grid-page">
+                  {groups.filter((group) => !group.isCreator).map((group, index) => <TeamCard group={group} index={index} key={group.groupId} onOpen={() => openTeam(group.groupId)} />)}
+                  {groups.every((group) => group.isCreator) && <p className="empty-copy">You’re not a member of another team yet.</p>}
+                </div>
+              </section>
               <div className="panel team-note"><span className="tip-icon"><Icon name="spark" size={17} /></span><div><strong>Good work is shared work.</strong><p>Invite your classmates to a team and keep all your tasks, meetings, and ideas together.</p></div></div>
             </PageSection>
           )}
@@ -1198,20 +1506,20 @@ export default function Home() {
               eyebrow="YOUR TEAM WORKSPACE"
               title={selectedTeam.groupName}
               description={selectedTeam.groupDescription || "A shared place to plan work and make progress together."}
-              actionLabel="Add a task"
+              actionLabel={selectedTeam.isLeader ? "Add a task" : ""}
               onAction={() => openTaskModal(selectedTeam.groupId)}
             >
               <section className="team-detail-hero">
                 <div>
                   <span className="section-eyebrow">MAKING PROGRESS TOGETHER</span>
-                  <p>{selectedTeam.memberCount} teammates · {selectedTeamTasks.length} tasks · {selectedTeamMeetings.length} upcoming meetups</p>
-                  <p className="project-estimate-summary">{selectedTeamTasks.reduce((total, task) => total + task.estimatedHours, 0).toFixed(1)} of {selectedTeam.estimatedProjectHours} estimated project hours planned</p>
+                  <p>{selectedTeam.memberCount} teammates · {selectedTeam.taskCount} tasks · {selectedTeam.pendingTaskCount} pending · {selectedTeam.inProgressTaskCount} in progress · {selectedTeamMeetings.length} upcoming meetups</p>
+                  <p className="project-estimate-summary">{selectedTeam.plannedTaskHours.toFixed(1)} of {selectedTeam.estimatedProjectHours} estimated project hours planned</p>
                   <div className="team-detail-progress"><span><span style={{ width: `${selectedTeam.taskCount ? Math.round((selectedTeam.completedTaskCount / selectedTeam.taskCount) * 100) : 0}%` }} /></span><strong>{selectedTeam.taskCount ? Math.round((selectedTeam.completedTaskCount / selectedTeam.taskCount) * 100) : 0}% complete</strong></div>
                 </div>
                 <div className="team-detail-actions">
-                  <button className="button button-quiet" onClick={() => openProjectBudgetModal(selectedTeam.groupId)} type="button"><Icon name="clock" size={16} /> Adjust estimate</button>
+                  {selectedTeam.isLeader && <button className="button button-quiet" onClick={() => openProjectBudgetModal(selectedTeam.groupId)} type="button"><Icon name="clock" size={16} /> Adjust estimate</button>}
                   <button className="button button-quiet" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("availability"); }} type="button"><Icon name="clock" size={16} /> Add availability</button>
-                  <button className="button button-primary" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("invite"); }} type="button"><Icon name="plus" size={16} /> Invite teammate</button>
+                  {selectedTeam.isLeader && <button className="button button-primary" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("invite"); }} type="button"><Icon name="plus" size={16} /> Invite teammate</button>}
                 </div>
               </section>
 
@@ -1219,7 +1527,7 @@ export default function Home() {
                 <section className="panel team-detail-tasks">
                   <div className="panel-heading">
                     <div><span className="section-eyebrow">WHO’S DOING WHAT</span><h2>Team tasks</h2></div>
-                    <button className="text-button" onClick={() => openTaskModal(selectedTeam.groupId)} type="button"><Icon name="plus" size={15} /> Add task</button>
+                    {selectedTeam.isLeader && <button className="text-button" onClick={() => openTaskModal(selectedTeam.groupId)} type="button"><Icon name="plus" size={15} /> Add task</button>}
                   </div>
                   {selectedTeamTasks.map((task) => {
                     const assignedMember = selectedTeamMembers.find(
@@ -1227,12 +1535,12 @@ export default function Home() {
                     );
                     return (
                       <div className="team-task-row" key={task.id}>
-                        <button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => toggleTask(task.id)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button>
+                        <button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => toggleTask(task.id)} disabled={!canUpdateTask(task)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button>
                         <div className="team-task-copy"><strong>{task.title}</strong><span>{task.status} · {task.estimatedHours} estimated h · Due {formatTaskDueDate(task.due)}</span></div>
-                        <select aria-label={`Assign ${task.title}`} value={assignedMember?.id ?? ""} onChange={(event) => assignTask(task.id, event.target.value)}>
+                        {selectedTeam.isLeader && <select aria-label={`Assign ${task.title}`} value={assignedMember?.id ?? ""} onChange={(event) => void assignTask(task.id, event.target.value)}>
                           <option value="">Unassigned</option>
                           {selectedTeamMembers.filter((member) => member.status === "Joined").map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-                        </select>
+                        </select>}
                       </div>
                     );
                   })}
@@ -1242,17 +1550,13 @@ export default function Home() {
                 <section className="panel team-members-panel">
                   <div className="panel-heading">
                     <div><span className="section-eyebrow">THE PEOPLE BEHIND THE PROGRESS</span><h2>Teammates</h2></div>
-                    <button className="text-button" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("invite"); }} type="button"><Icon name="plus" size={15} /> Invite</button>
+                    {selectedTeam.isLeader && <button className="text-button" onClick={() => { setModalGroupId(selectedTeam.groupId); setModal("invite"); }} type="button"><Icon name="plus" size={15} /> Invite</button>}
                   </div>
                   {selectedTeamMembers.map((member) => (
                     <div className="member-list-row" key={member.id}>
                       <span className={`member-avatar member-avatar-${member.status === "Joined" ? "joined" : "pending"}`}>{member.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
                       <span className="member-list-copy"><strong>{member.name}</strong><small>{member.email || member.role}</small></span>
-                      {member.status === "Invite pending" ? (
-                        <span className="member-pending-actions"><span className="member-status pending-label">Invite pending</span><button className="member-status pending" onClick={() => updateMemberStatus(selectedTeam.groupId, member.id)} type="button">Mark joined</button></span>
-                      ) : (
-                        <span className="member-role">{member.role}</span>
-                      )}
+                      <span className="member-role">{member.role}</span>
                     </div>
                   ))}
                   {selectedTeamMembers.length === 0 && <p className="empty-copy">Invite classmates to start working together.</p>}
@@ -1269,14 +1573,14 @@ export default function Home() {
                 </p>
                 {selectedTeamCurrentMember ? (
                   <div className="availability-submissions">
-                    <strong>{selectedTeamCurrentMember.role === "Leader" ? "Submitted by teammates" : "Your submitted times"}</strong>
+                    <strong>{selectedTeam.isLeader ? "Submitted by teammates" : "Your submitted times"}</strong>
                     {selectedTeamAvailability.length > 0 ? (
                       <div className="availability-submission-list">
                         {selectedTeamAvailability.map((entry) => {
                           const member = selectedTeamMembers.find((item) => item.id === entry.memberId);
                           return (
                             <div className="availability-submission" key={`${entry.memberId}-${entry.date}-${entry.start}-${entry.end}`}>
-                              <span><strong>{selectedTeamCurrentMember.role === "Leader" ? member?.name ?? "Team member" : "You"}</strong><small>{formatDateLabel(entry.date)}</small></span>
+                              <span><strong>{selectedTeam.isLeader ? member?.name ?? "Team member" : "You"}</strong><small>{formatDateLabel(entry.date)}</small></span>
                               <span>{formatDisplayTime(entry.start)}–{formatDisplayTime(entry.end)}</span>
                             </div>
                           );
@@ -1303,12 +1607,11 @@ export default function Home() {
                 ) : (
                   <div className="availability-empty"><Icon name="clock" size={19} /><span>No common slots yet. Add availability for each joined teammate to find an overlap.</span></div>
                 )}
-                <span className="availability-demo-note">Sample availability is provided for this frontend preview.</span>
               </section>
 
-              {selectedTeamMeetings.length > 0 && (
+                  {selectedTeamMeetings.length > 0 && (
                 <section className="panel team-meetings-panel">
-                  <div className="panel-heading"><div><span className="section-eyebrow">TIME TO GET TOGETHER</span><h2>Team meetups</h2></div><button className="text-button" onClick={() => openMeetingModal(selectedTeam.groupId)} type="button"><Icon name="plus" size={15} /> Plan a meetup</button></div>
+                      <div className="panel-heading"><div><span className="section-eyebrow">TIME TO GET TOGETHER</span><h2>Team meetups</h2></div>{selectedTeam.isLeader && <button className="text-button" onClick={() => openMeetingModal(selectedTeam.groupId)} type="button"><Icon name="plus" size={15} /> Plan a meetup</button>}</div>
                   {selectedTeamMeetings.map((meeting) => <MeetingRow key={meeting.id} meeting={meeting} roomy onOpen={() => openMeeting(meeting.id)} />)}
                 </section>
               )}
@@ -1316,7 +1619,7 @@ export default function Home() {
           )}
 
           {activePage === "Schedule" && (
-            <PageSection eyebrow="MAKE ROOM FOR EACH OTHER" title="Team schedule" description="Time set aside to think, plan, and get somewhere together." actionLabel="Plan a meetup" onAction={() => setModal("meeting")}>
+            <PageSection eyebrow="MAKE ROOM FOR EACH OTHER" title="Team schedule" description="Time set aside to think, plan, and get somewhere together." actionLabel={groups.some((group) => group.isLeader) ? "Plan a meetup" : ""} onAction={() => openMeetingModal()}>
               <div className="calendar-banner">
                 <div className="calendar-date-card"><span>{upcomingMeetings[0]?.dateISO ? formatDateLabel(upcomingMeetings[0].dateISO).split(" ")[1].toUpperCase() : "OPEN"}</span><strong>{upcomingMeetings[0]?.dateISO.slice(8, 10) ?? "—"}</strong><small>{upcomingMeetings[0]?.date.split(" ")[0].replace(",", "").toUpperCase() ?? "DAY"}</small></div>
                 <div><span className="section-eyebrow">NEXT UP</span><h2>{upcomingMeetings[0]?.title ?? "An open afternoon"}</h2><p>{upcomingMeetings[0] ? `${formatDateLabel(upcomingMeetings[0].dateISO)} · ${upcomingMeetings[0].time} · ${upcomingMeetings[0].group}` : "Plan a team meetup whenever it works for you."}</p></div>
@@ -1367,7 +1670,7 @@ export default function Home() {
                   <div className="meeting-attendee-list">{selectedMeetingAttendees.map((member) => (
                     <div className="meeting-attendee" key={member.id}>
                       <span className={`member-avatar member-avatar-${member.status === "Joined" ? "joined" : "pending"}`}>{member.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
-                      <span><strong>{member.name}</strong><small>{member.role}{member.status === "Invite pending" ? " · Invite pending" : ""}</small></span>
+                      <span><strong>{member.name}</strong><small>{member.role}</small></span>
                     </div>
                   ))}</div>
                 ) : <p className="empty-copy">There are no invitees listed for this meetup.</p>}
@@ -1418,9 +1721,9 @@ export default function Home() {
           <section aria-labelledby="modal-title" aria-modal="true" className="modal-card" role="dialog">
             <button className="modal-close" aria-label="Close dialog" onClick={() => setModal(null)} type="button"><Icon name="close" size={20} /></button>
             <span className="section-eyebrow">{modal === "task" ? "ONE THING AT A TIME" : modal === "team" || modal === "teamBudget" || modal === "invite" ? "GOOD THINGS GROW TOGETHER" : modal === "availability" ? "A TIME THAT WORKS FOR EVERYONE" : "MAKE TIME TO CONNECT"}</span>
-            <h2 id="modal-title">{modal === "task" ? "Add a task" : modal === "team" ? "Start a team" : modal === "teamBudget" ? "Adjust project estimate" : modal === "invite" ? "Invite a teammate" : modal === "availability" ? "Add your availability" : "Plan a meetup"}</h2>
-            <p className="modal-description">{modal === "task" ? "Choose a team and teammate so everyone knows what’s next." : modal === "team" ? "Create a shared space and set a realistic hour budget for the project." : modal === "teamBudget" ? `Update the total hours for ${budgetEditGroup?.groupName ?? "this project"}. The estimate can’t be lower than hours already planned for tasks.` : modal === "invite" ? "Add a classmate to this team. Invitations are only prepared in this preview." : modal === "availability" ? "Choose a date and time window when you’re free. Your submission is shared with the team lead." : "Find a little time to get everyone on the same page."}</p>
-            <form className="modal-form" onSubmit={handleCreate}>
+            <h2 id="modal-title">{modal === "task" ? "Add a task" : modal === "team" ? "Start a team" : modal === "teamBudget" ? "Adjust project estimate" : modal === "invite" ? "Add a teammate" : modal === "availability" ? "Add your availability" : modal === "profile" ? "Edit your profile" : "Plan a meetup"}</h2>
+            <p className="modal-description">{modal === "task" ? "Choose a team and teammate so everyone knows what’s next." : modal === "team" ? "Create a shared space and set a realistic hour budget for the project." : modal === "teamBudget" ? `Update the total hours for ${budgetEditGroup?.groupName ?? "this project"}. The estimate can’t be lower than hours already planned for tasks.` : modal === "invite" ? "Enter their email. If they don’t have a StudySync account, you’ll get a link to share so they can sign up and join." : modal === "availability" ? "Choose a date and time window when you’re free. Your submission is shared with the team." : modal === "profile" ? "Keep your student details up to date." : "Find a little time to get everyone on the same page."}</p>
+            <form className="modal-form"             onSubmit={handleApiCreate}>
               {(modal === "task" || modal === "team" || modal === "meeting") && <>
                 <label htmlFor="create-title">{modal === "team" ? "Team name" : modal === "meeting" ? "Meetup title" : "Task name"}</label>
                 <input id="create-title" name="title" placeholder={modal === "team" ? "e.g. Biology study group" : modal === "meeting" ? "e.g. Weekly project check-in" : "e.g. Review project outline"} required />
@@ -1437,10 +1740,12 @@ export default function Home() {
               {(modal === "task" || modal === "meeting") && <>
                 <label htmlFor="groupId">Team</label>
                 <select id="groupId" name="groupId" value={modalGroupId} onChange={(event) => setModalGroupId(Number(event.target.value))} required>
-                  {groups.map((group) => <option key={group.groupId} value={group.groupId}>{group.groupName}</option>)}
+                  {groups.filter((group) => group.isLeader).map((group) => <option key={group.groupId} value={group.groupId}>{group.groupName}</option>)}
                 </select>
               </>}
               {modal === "task" && <>
+                <label htmlFor="task-description">Description <span className="optional">(optional)</span></label>
+                <textarea id="task-description" name="description" placeholder="Add a little context for your teammates." rows={3} />
                 <label htmlFor="assigneeId">Assign to <span className="optional">(optional)</span></label>
                 <select id="assigneeId" name="assigneeId" defaultValue="">
                   <option value="">Unassigned</option>
@@ -1457,8 +1762,9 @@ export default function Home() {
               </>}
               {modal === "meeting" && <>
                 <div className="form-two-columns">
-                  <div><label htmlFor="date">Date</label><input id="date" name="date" type="date" value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} required /></div>
+                  <div><label htmlFor="date">Date</label><input id="date" name="date" type="date" min={getTodayISO()} value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} required /></div>
                   <div><label htmlFor="time">Start time</label><input id="time" name="time" type="time" value={meetingStart} onChange={(event) => setMeetingStart(event.target.value)} required /></div>
+                  <div><label htmlFor="end-time">End time</label><input id="end-time" name="endTime" type="time" value={meetingEnd} onChange={(event) => setMeetingEnd(event.target.value)} required /></div>
                   <div className="full-form-field"><label htmlFor="meeting-type">Meetup type</label><select id="meeting-type" name="meetingType" value={meetingType} onChange={(event) => setMeetingType(event.target.value as Meeting["type"])}><option>In person</option><option>Online</option></select></div>
                   <div className="full-form-field"><label htmlFor="location">{meetingType === "Online" ? "Google Meet link" : "Location"}</label><input id="location" name="location" type={meetingType === "Online" ? "url" : "text"} placeholder={meetingType === "Online" ? "https://meet.google.com/..." : "e.g. Library · Room 204"} required /></div>
                   <div className="full-form-field"><label htmlFor="agenda">Agenda <span className="optional">(one item per line)</span></label><textarea id="agenda" name="agenda" placeholder={"e.g. Review project progress\nAssign next steps"} rows={3} /></div>
@@ -1466,16 +1772,41 @@ export default function Home() {
               </>}
               {modal === "invite" && <>
                 <input type="hidden" name="groupId" value={modalGroupId} />
-                <label htmlFor="invite-email">Teammate’s email</label><input id="invite-email" name="email" type="email" placeholder="classmate@university.edu" autoComplete="email" required />
-                <label htmlFor="invite-name">Name <span className="optional">(optional)</span></label><input id="invite-name" name="name" placeholder="Their name" autoComplete="name" />
+                {invitationLink ? (
+                  <>
+                    <label htmlFor="invite-link">Share this account-creation link</label>
+                    <input id="invite-link" type="url" value={invitationLink} readOnly onFocus={(event) => event.currentTarget.select()} />
+                    <button className="button button-primary" type="button" onClick={() => void copyInvitationLink()}>
+                      {inviteCopyStatus === "Invitation link copied." ? "Copied" : "Copy invite link"}
+                    </button>
+                    <p className="invite-link-note">This link is for the invited email address and expires in 7 days.</p>
+                    {inviteCopyStatus && <p className="form-success" role="status">{inviteCopyStatus}</p>}
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="invite-email">Teammate’s email</label>
+                    <input id="invite-email" name="email" type="email" placeholder="classmate@university.edu" autoComplete="email" required />
+                  </>
+                )}
               </>}
               {modal === "availability" && <>
                 <input type="hidden" name="groupId" value={modalGroupId} />
                 <p className="availability-owner-note">Adding availability as <strong>{userName}</strong>. Only your own account can submit these times.</p>
-                <div className="form-two-columns"><div className="full-form-field"><label htmlFor="availability-date">Date</label><input id="availability-date" name="date" type="date" required /></div><div><label htmlFor="availability-start">Available from</label><input id="availability-start" name="start" type="time" required /></div><div><label htmlFor="availability-end">Available until</label><input id="availability-end" name="end" type="time" required /></div></div>
+                <div className="form-two-columns"><div className="full-form-field"><label htmlFor="availability-date">Date</label><input id="availability-date" name="date" type="date" min={getTodayISO()} required /></div><div><label htmlFor="availability-start">Available from</label><input id="availability-start" name="start" type="time" required /></div><div><label htmlFor="availability-end">Available until</label><input id="availability-end" name="end" type="time" required /></div></div>
               </>}
-              {formError && (modal === "task" || modal === "team" || modal === "teamBudget" || modal === "availability") && <p className="form-error" role="alert">{formError}</p>}
-              <div className="modal-actions"><button className="button button-quiet" onClick={() => setModal(null)} type="button">Cancel</button><button className="button button-primary" type="submit">{modal === "task" ? "Add task" : modal === "team" ? "Create team" : modal === "teamBudget" ? "Save estimate" : modal === "invite" ? "Prepare invite" : modal === "availability" ? "Save availability" : "Schedule meetup"} <Icon name="arrow" size={15} /></button></div>
+              {modal === "profile" && <>
+                <label htmlFor="profile-name">Your name</label><input id="profile-name" name="studentName" defaultValue={userName} maxLength={100} required />
+                <label htmlFor="profile-department">Department <span className="optional">(optional)</span></label><input id="profile-department" name="department" defaultValue={department} maxLength={100} />
+                <div className="form-two-columns">
+                  <div><label htmlFor="profile-semester">Semester <span className="optional">(optional)</span></label><input id="profile-semester" name="semester" type="number" min="1" max="20" defaultValue={semester ?? ""} /></div>
+                  <div><label htmlFor="profile-cgpa">CGPA <span className="optional">(optional)</span></label><input id="profile-cgpa" name="cgpa" type="number" min="0" max="10" step="0.01" defaultValue={cgpa ?? ""} /></div>
+                </div>
+              </>}
+              {formError && <p className="form-error" role="alert">{formError}</p>}
+              <div className="modal-actions">
+                <button className="button button-quiet" onClick={() => setModal(null)} type="button">{invitationLink ? "Done" : "Cancel"}</button>
+                {!invitationLink && <button className="button button-primary" type="submit">{modal === "task" ? "Add task" : modal === "team" ? "Create team" : modal === "teamBudget" ? "Save estimate" : modal === "invite" ? "Add teammate" : modal === "availability" ? "Save availability" : modal === "profile" ? "Save profile" : "Schedule meetup"} <Icon name="arrow" size={15} /></button>}
+              </div>
             </form>
           </section>
         </div>
@@ -1602,10 +1933,10 @@ function formatFocusDuration(seconds: number): string {
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
-function TaskRow({ task, onToggle }: { task: Task; onToggle: (id: number) => void }) {
+function TaskRow({ task, onToggle, canUpdate }: { task: Task; onToggle: (id: number) => void; canUpdate: boolean }) {
   return (
     <div className="task-row">
-      <button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => onToggle(task.id)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button>
+      <button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => onToggle(task.id)} disabled={!canUpdate} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button>
       <div className="task-row-copy"><strong>{task.title}</strong><span>{task.group}</span></div>
       <span className={`priority-dot priority-${task.priority.toLowerCase()}`} title={`${task.priority} priority`} />
       <span className="task-due"><Icon name="clock" size={14} /> {formatTaskDueDate(task.due)}</span>
@@ -1613,10 +1944,10 @@ function TaskRow({ task, onToggle }: { task: Task; onToggle: (id: number) => voi
   );
 }
 
-function TaskTableRow({ task, onToggle }: { task: Task; onToggle: (id: number) => void }) {
+function TaskTableRow({ task, onToggle, canUpdate }: { task: Task; onToggle: (id: number) => void; canUpdate: boolean }) {
   return (
     <div className="task-table-row">
-      <div className="table-task-title"><button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => onToggle(task.id)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button><span className={task.status === "Completed" ? "completed-title" : ""}>{task.title}</span></div>
+      <div className="table-task-title"><button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => onToggle(task.id)} disabled={!canUpdate} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button><span className={task.status === "Completed" ? "completed-title" : ""}>{task.title}</span></div>
       <span className="table-team">{task.group}</span>
       <span className="table-due">{formatTaskDueDate(task.due)}</span>
       <span><span className={`priority-pill priority-pill-${task.priority.toLowerCase()}`}><span />{task.priority}</span></span>
@@ -1646,8 +1977,11 @@ function TeamCard({ group, index, onOpen }: { group: Group; index: number; onOpe
         <span className="team-card-kicker">PROJECT TEAM</span>
         <h3>{group.groupName}</h3>
         <p>{group.groupDescription || "A shared space to plan, create, and make progress together."}</p>
-        <div className="team-members"><div className="mini-avatars"><span>A</span><span>R</span><span>P</span></div><span>{group.memberCount} members</span><span className="member-divider" /><span>{group.taskCount} tasks</span></div>
+        <div className="team-members"><span>{group.memberCount} members</span><span className="member-divider" /><span>{group.taskCount} tasks</span></div>
+        <p className="team-card-leader">{group.isCreator ? "You lead this team" : `Team lead: ${group.leaderName ?? "Not set"}`}</p>
+        <p className="team-card-task-summary">{group.completedTaskCount} completed · {group.pendingTaskCount} pending · {group.inProgressTaskCount} in progress</p>
         <div className="team-progress"><span><span style={{ width: `${progress}%` }} /></span><strong>{progress}%</strong></div>
+        <span className="team-manage-label">{group.isLeader ? "Manage team" : "View team"} <Icon name="arrow" size={14} /></span>
       </div>
     </button>
   );

@@ -1,4 +1,5 @@
 import mysql, { type Pool } from "mysql2/promise";
+import { HttpError } from "@/lib/http";
 
 let pool: Pool | undefined;
 
@@ -18,7 +19,10 @@ export function getPool(): Pool {
     .map(([name]) => name);
 
   if (missing.length > 0) {
-    throw new Error(`Missing database environment variables: ${missing.join(", ")}`);
+    throw new HttpError(
+      503,
+      `Database is not configured. Set ${missing.join(", ")} in .env.local and restart the app.`,
+    );
   }
 
   const port = DB_PORT ? Number(DB_PORT) : 3306;
@@ -32,6 +36,7 @@ export function getPool(): Pool {
     user: DB_USER,
     password: DB_PASSWORD,
     database: DB_NAME,
+    timezone: "Z",
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,

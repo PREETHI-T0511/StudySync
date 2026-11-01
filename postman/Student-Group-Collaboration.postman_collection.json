@@ -2,29 +2,317 @@
   "info": {
     "_postman_id": "fba52976-6f05-4d72-9269-7ea223fcd801",
     "name": "Student Group Collaboration",
-    "description": "Local development requests for the Student Group Collaboration API.",
+    "description": "Authenticated requests for the Student Group Collaboration API. Postman retains the HTTP-only session cookie after login or registration.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {
-      "key": "baseUrl",
-      "value": "http://localhost:3000"
-    }
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "groupId", "value": "1" },
+    { "key": "taskId", "value": "1" },
+    { "key": "meetingId", "value": "1" },
+    { "key": "availabilityId", "value": "1" },
+    { "key": "studentId", "value": "1" },
+    { "key": "invitationToken", "value": "replace-with-the-token-from-the-signup-link" }
   ],
   "item": [
     {
-      "name": "Health check",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/api/health"
-      }
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health"
+          }
+        }
+      ]
     },
     {
-      "name": "List groups",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/api/groups"
-      }
+      "name": "Authentication and profile",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentName\": \"StudySync Student\",\n  \"email\": \"student@example.edu\",\n  \"password\": \"replace-with-a-secure-password\",\n  \"department\": \"Computer Science\",\n  \"semester\": 5,\n  \"cgpa\": 8.5\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
+          }
+        },
+        {
+          "name": "Log in",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.edu\",\n  \"password\": \"replace-with-a-secure-password\",\n  \"rememberMe\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Current student",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/auth/me"
+          }
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentName\": \"StudySync Student\",\n  \"department\": \"Computer Science\",\n  \"semester\": 5,\n  \"cgpa\": 8.5\n}"
+            },
+            "url": "{{baseUrl}}/api/student/profile"
+          }
+        },
+        {
+          "name": "Log out",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard and groups",
+      "item": [
+        {
+          "name": "Dashboard summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/dashboard"
+          }
+        },
+        {
+          "name": "List groups",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/groups"
+          }
+        },
+        {
+          "name": "Create group",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupName\": \"Database Project Team\",\n  \"description\": \"Working on the DBMS project\",\n  \"projectEstimatedHours\": 40\n}"
+            },
+            "url": "{{baseUrl}}/api/groups"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('groupId', pm.response.json().groupId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Group details",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/groups/{{groupId}}"
+          }
+        },
+        {
+          "name": "List group members",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/groups/{{groupId}}/members"
+          }
+        },
+        {
+          "name": "Add member by email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"teammate@example.edu\"\n}"
+            },
+            "url": "{{baseUrl}}/api/groups/{{groupId}}/members"
+          }
+        },
+        {
+          "name": "Inspect signup invitation",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/invitations/{{invitationToken}}"
+          }
+        },
+        {
+          "name": "Accept invitation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{invitationToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/invitations/accept"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "List group tasks",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/groups/{{groupId}}/tasks"
+          }
+        },
+        {
+          "name": "Create task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taskTitle\": \"Review database schema\",\n  \"taskDescription\": \"Check keys and relationships\",\n  \"deadline\": \"2026-11-10\",\n  \"priority\": \"High\",\n  \"estimatedHrs\": 8\n}"
+            },
+            "url": "{{baseUrl}}/api/groups/{{groupId}}/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('taskId', pm.response.json().taskId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update task status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"In Progress\"\n}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Availability",
+      "item": [
+        {
+          "name": "List my availability",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/availability"
+          }
+        },
+        {
+          "name": "List group availability",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/availability?groupId={{groupId}}"
+          }
+        },
+        {
+          "name": "Add availability",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"availableDate\": \"2026-11-05\",\n  \"startTime\": \"10:00:00\",\n  \"endTime\": \"12:00:00\"\n}"
+            },
+            "url": "{{baseUrl}}/api/availability"
+          }
+        },
+        {
+          "name": "Delete availability",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/availability/{{availabilityId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Meetings",
+      "item": [
+        {
+          "name": "List group meetings",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/meetings?groupId={{groupId}}"
+          }
+        },
+        {
+          "name": "Schedule meeting with agenda",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupId\": {{groupId}},\n  \"meetingTitle\": \"Database discussion\",\n  \"meetingDate\": \"2026-11-05\",\n  \"startTime\": \"10:00:00\",\n  \"endTime\": \"11:00:00\",\n  \"meetingLocation\": \"Lab 1\",\n  \"agenda\": [\"Schema review\", \"Query discussion\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/meetings"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('meetingId', pm.response.json().meetingId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Meeting details and agenda",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}"
+          }
+        },
+        {
+          "name": "Add agenda item",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agendaTitle\": \"Confirm next steps\",\n  \"agendaDescription\": \"Agree on owners and deadlines\"\n}"
+            },
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}/agenda"
+          }
+        }
+      ]
     }
   ]
 }
