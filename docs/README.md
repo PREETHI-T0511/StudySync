@@ -14,7 +14,8 @@
 
 Start local ChromaDB before using semantic task search:
 `docker compose up -d chroma`. Task embeddings are generated locally using
-all-MiniLM-L6-v2; the model files are downloaded on the first semantic search.
+all-MiniLM-L6-v2; the model files are downloaded on the first semantic search
+or duplicate-task check.
 ChromaDB stores its persisted index in the `chroma_data` Docker volume.
 
 The groups dashboard reads from the `v_group_overview` database view created by
@@ -53,7 +54,8 @@ Errors return JSON in the form `{ "error": "..." }`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | Check MySQL connectivity. |
-| GET | `/api/search/tasks?q=:query` | Semantically search tasks visible to the authenticated student using local ChromaDB. |
+| GET | `/api/search/tasks?q=:query` | Return up to ten relevance-ranked task matches for the authenticated student, including partial text matches; ChromaDB adds semantic matches when available. |
+| POST | `/api/groups/:groupId/tasks/similar` | Find similar existing tasks across the authenticated leader's teams before task creation; accepts `taskTitle` and optional `taskDescription`. |
 | POST | `/api/auth/register` | Register with `studentName`, `email`, `password`; optional `department`, `semester`, and `cgpa`. |
 | POST | `/api/auth/login` | Sign in with `email`, `password`, and optional boolean `rememberMe`. |
 | POST | `/api/auth/logout` | Revoke the current session and clear its cookie. |

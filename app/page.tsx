@@ -81,6 +81,15 @@ type Task = {
   initials: string;
 };
 
+type SimilarTask = {
+  id: number;
+  groupId: number;
+  groupName: string;
+  title: string;
+  description: string | null;
+  similarity: number;
+};
+
 type Group = {
   groupId: number;
   groupName: string;
@@ -242,6 +251,9 @@ export default function Home() {
   const [taskFilter, setTaskFilter] = useState("All tasks");
   const [modal, setModal] = useState<ModalName>(null);
   const [modalGroupId, setModalGroupId] = useState<number>(0);
+  const [taskDuplicateMatches, setTaskDuplicateMatches] = useState<SimilarTask[] | null>(null);
+  const [taskDuplicateCheckError, setTaskDuplicateCheckError] = useState("");
+  const [focusedTeamTaskId, setFocusedTeamTaskId] = useState<number | null>(null);
   const [meetingDate, setMeetingDate] = useState("");
   const [meetingStart, setMeetingStart] = useState("");
   const [meetingEnd, setMeetingEnd] = useState("");
@@ -533,11 +545,14 @@ export default function Home() {
     setSemanticSearchLoading(true);
     setSemanticSearchError("");
     const timeout = window.setTimeout(() => {
-      void apiRequest<{ taskIds: number[] }>(
+      void apiRequest<{ taskIds: number[]; warning?: string }>(
         `/api/search/tasks?q=${encodeURIComponent(query)}`,
       )
         .then((result) => {
-          if (active) setSemanticTaskIds(result.taskIds);
+          if (active) {
+            setSemanticTaskIds(result.taskIds);
+            setSemanticSearchError(result.warning ?? "");
+          }
         })
         .catch((error: unknown) => {
           if (!active) return;
@@ -566,7 +581,17 @@ export default function Home() {
   useEffect(() => {
     setFormError("");
     setInvitationLink("");
+    setTaskDuplicateMatches(null);
+    setTaskDuplicateCheckError("");
   }, [modal]);
+
+  useEffect(() => {
+    if (activePage !== "Team details" || focusedTeamTaskId === null) return;
+    const taskElement = document.getElementById(`team-task-${focusedTeamTaskId}`);
+    if (!taskElement) return;
+    taskElement.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFocusedTeamTaskId(null);
+  }, [activePage, focusedTeamTaskId, selectedTeamId, tasks]);
 
   useEffect(() => {
     function focusSearch(event: KeyboardEvent) {
@@ -623,15 +648,19 @@ export default function Home() {
 
   const visibleTasks = useMemo(() => {
     const query = search.trim();
-    return tasks.filter((task) => {
-      const matchesSearch = !query || (semanticTaskIds ?? []).includes(task.id);
+    const matchingTasks = query
+      ? (semanticTaskIds ?? [])
+          .map((taskId) => tasks.find((task) => task.id === taskId))
+          .filter((task): task is Task => task !== undefined)
+      : tasks;
+    return matchingTasks.filter((task) => {
       const matchesFilter =
         taskFilter === "All tasks" ||
         (taskFilter === "My tasks" && task.assigneeStudentId === userId) ||
         (taskFilter === "To do" && task.status === "To do") ||
         (taskFilter === "In progress" && task.status === "In progress") ||
         (taskFilter === "Completed" && task.status === "Completed");
-      return matchesSearch && matchesFilter;
+      return matchesFilter;
     });
   }, [search, semanticTaskIds, taskFilter, tasks, userId]);
 
@@ -781,6 +810,8 @@ export default function Home() {
 
   function openTaskModal(groupId = selectedTeamId ?? groups.find((group) => group.isLeader)?.groupId) {
     if (groupId !== undefined && groupId !== null) setModalGroupId(groupId);
+    setTaskDuplicateMatches(null);
+    setTaskDuplicateCheckError("");
     setModal("task");
   }
 
@@ -821,13 +852,36 @@ export default function Home() {
     try {
       if (modal === "task") {
         const groupId = Number(formData.get("groupId"));
+        const taskTitle = String(formData.get("title") ?? "").trim();
+        const taskDescription = String(formData.get("description") ?? "").trim() || null;
         const assigneeId = String(formData.get("assigneeId") ?? "");
         const estimatedHours = Number(formData.get("estimatedHours"));
+        if (!taskDuplicateMatches?.length && !taskDuplicateCheckError) {
+          try {
+            const result = await apiRequest<{ matches: SimilarTask[] }>(
+              `/api/groups/${groupId}/tasks/similar`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  taskTitle,
+                  taskDescription,
+                }),
+              },
+            );
+            setTaskDuplicateMatches(result.matches);
+            if (result.matches.length > 0) return;
+          } catch (error) {
+            setTaskDuplicateCheckError(
+              error instanceof Error ? error.message : "Semantic duplicate detection is unavailable.",
+            );
+            return;
+          }
+        }
         await apiRequest(`/api/groups/${groupId}/tasks`, {
           method: "POST",
           body: JSON.stringify({
-            taskTitle: String(formData.get("title") ?? "").trim(),
-            taskDescription: String(formData.get("description") ?? "").trim() || null,
+            taskTitle,
+            taskDescription,
             deadline: String(formData.get("due") ?? "") || null,
             priority: String(formData.get("priority") ?? "Medium"),
             estimatedHrs: estimatedHours,
@@ -1574,7 +1628,7 @@ export default function Home() {
                       (member) => member.status === "Joined" && member.name === task.assignee,
                     );
                     return (
-                      <div className="team-task-row" key={task.id}>
+                      <div className="team-task-row" id={`team-task-${task.id}`} key={task.id}>
                         <button className={`task-checkbox ${task.status === "Completed" ? "checked" : ""}`} aria-label={task.status === "Completed" ? `Mark ${task.title} as not completed` : `Mark ${task.title} as completed`} onClick={() => toggleTask(task.id)} disabled={!canUpdateTask(task)} type="button">{task.status === "Completed" && <Icon name="check" size={13} />}</button>
                         <div className="team-task-copy"><strong>{task.title}</strong><span>{task.status} · {task.estimatedHours} estimated h · Due {formatTaskDueDate(task.due)}</span></div>
                         {selectedTeam.isLeader && <select aria-label={`Assign ${task.title}`} value={assignedMember?.id ?? ""} onChange={(event) => void assignTask(task.id, event.target.value)}>
@@ -1762,8 +1816,13 @@ export default function Home() {
             <button className="modal-close" aria-label="Close dialog" onClick={() => setModal(null)} type="button"><Icon name="close" size={20} /></button>
             <span className="section-eyebrow">{modal === "task" ? "ONE THING AT A TIME" : modal === "team" || modal === "teamBudget" || modal === "invite" ? "GOOD THINGS GROW TOGETHER" : modal === "availability" ? "A TIME THAT WORKS FOR EVERYONE" : "MAKE TIME TO CONNECT"}</span>
             <h2 id="modal-title">{modal === "task" ? "Add a task" : modal === "team" ? "Start a team" : modal === "teamBudget" ? "Adjust project estimate" : modal === "invite" ? "Add a teammate" : modal === "availability" ? "Add your availability" : modal === "profile" ? "Edit your profile" : "Plan a meetup"}</h2>
-            <p className="modal-description">{modal === "task" ? "Choose a team and teammate so everyone knows what’s next." : modal === "team" ? "Create a shared space and set a realistic hour budget for the project." : modal === "teamBudget" ? `Update the total hours for ${budgetEditGroup?.groupName ?? "this project"}. The estimate can’t be lower than hours already planned for tasks.` : modal === "invite" ? "Enter their email. If they don’t have a StudySync account, you’ll get a link to share so they can sign up and join." : modal === "availability" ? "Choose a date and time window when you’re free. Your submission is shared with the team." : modal === "profile" ? "Keep your student details up to date." : "Find a little time to get everyone on the same page."}</p>
-            <form className="modal-form"             onSubmit={handleApiCreate}>
+            <p className="modal-description">{modal === "task" ? "We’ll check your teams for similar tasks first. Review any matches and choose whether to continue." : modal === "team" ? "Create a shared space and set a realistic hour budget for the project." : modal === "teamBudget" ? `Update the total hours for ${budgetEditGroup?.groupName ?? "this project"}. The estimate can’t be lower than hours already planned for tasks.` : modal === "invite" ? "Enter their email. If they don’t have a StudySync account, you’ll get a link to share so they can sign up and join." : modal === "availability" ? "Choose a date and time window when you’re free. Your submission is shared with the team." : modal === "profile" ? "Keep your student details up to date." : "Find a little time to get everyone on the same page."}</p>
+            <form className="modal-form" onChange={() => {
+              if (modal === "task") {
+                setTaskDuplicateMatches(null);
+                setTaskDuplicateCheckError("");
+              }
+            }} onSubmit={handleApiCreate}>
               {(modal === "task" || modal === "team" || modal === "meeting") && <>
                 <label htmlFor="create-title">{modal === "team" ? "Team name" : modal === "meeting" ? "Meetup title" : "Task name"}</label>
                 <input id="create-title" name="title" placeholder={modal === "team" ? "e.g. Biology study group" : modal === "meeting" ? "e.g. Weekly project check-in" : "e.g. Review project outline"} required />
@@ -1800,6 +1859,35 @@ export default function Home() {
                   <div className="full-form-field"><label htmlFor="priority">Priority</label><select id="priority" name="priority"><option>Medium</option><option>High</option><option>Low</option></select></div>
                 </div>
               </>}
+              {modal === "task" && taskDuplicateMatches && taskDuplicateMatches.length > 0 && (
+                <section className="duplicate-warning" aria-labelledby="duplicate-warning-title" aria-live="polite">
+                  <strong id="duplicate-warning-title">This may already exist</strong>
+                  <p>We found similar tasks in your teams. Review them before deciding whether to create this task.</p>
+                  <ul>
+                    {taskDuplicateMatches.map((task) => (
+                      <li key={task.id}>
+                        <button
+                          className="duplicate-task-link"
+                          onClick={() => {
+                            openTeam(task.groupId);
+                            setFocusedTeamTaskId(task.id);
+                            setModal(null);
+                          }}
+                          type="button"
+                        >
+                          <span>{task.title}</span>
+                          <small>{task.groupName}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {modal === "task" && taskDuplicateCheckError && (
+                <p className="form-error" role="alert">
+                  {taskDuplicateCheckError} You can still create the task without checking.
+                </p>
+              )}
               {modal === "meeting" && <>
                 <div className="form-two-columns">
                   <div><label htmlFor="date">Date</label><input id="date" name="date" type="date" min={getTodayISO()} value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} required /></div>
@@ -1845,7 +1933,7 @@ export default function Home() {
               {formError && <p className="form-error" role="alert">{formError}</p>}
               <div className="modal-actions">
                 <button className="button button-quiet" onClick={() => setModal(null)} type="button">{invitationLink ? "Done" : "Cancel"}</button>
-                {!invitationLink && <button className="button button-primary" type="submit">{modal === "task" ? "Add task" : modal === "team" ? "Create team" : modal === "teamBudget" ? "Save estimate" : modal === "invite" ? "Add teammate" : modal === "availability" ? "Save availability" : modal === "profile" ? "Save profile" : "Schedule meetup"} <Icon name="arrow" size={15} /></button>}
+                {!invitationLink && <button className="button button-primary" type="submit">{modal === "task" ? taskDuplicateCheckError ? "Create without check" : taskDuplicateMatches?.length ? "Create anyway" : "Add task" : modal === "team" ? "Create team" : modal === "teamBudget" ? "Save estimate" : modal === "invite" ? "Add teammate" : modal === "availability" ? "Save availability" : modal === "profile" ? "Save profile" : "Schedule meetup"} <Icon name="arrow" size={15} /></button>}
               </div>
             </form>
           </section>

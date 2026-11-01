@@ -351,6 +351,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .estimate-budget-note strong { color: #5b456c; font-weight: 600; }
 .estimate-help { margin: -2px 0 7px; color: #8d8492; font-size: 10px; line-height: 1.5; }
 .form-error { margin: 2px 0 5px; padding: 9px 10px; border: 1px solid #eed4d4; border-radius: 7px; background: #fff7f6; color: #9c4545; font-size: 11px; line-height: 1.5; }
+.duplicate-warning { margin: 2px 0 5px; padding: 12px; border: 1px solid #ead8af; border-radius: 8px; background: #fffaf0; color: #725b2f; }
+.duplicate-warning > strong { color: #665027; font-size: 13px; }
+.duplicate-warning p { margin: 5px 0 9px; color: #817456; font-size: 11px; line-height: 1.5; }
+.duplicate-warning ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.duplicate-task-link { display: flex; width: 100%; flex-direction: column; gap: 3px; padding: 8px 9px; border: 1px solid #efe5d1; border-radius: 6px; background: #fffefa; color: #5e4d70; text-align: left; cursor: pointer; }
+.duplicate-task-link:hover { border-color: #d7c39a; background: #fffdf7; }
+.duplicate-task-link span { font-size: 12px; font-weight: 600; }
+.duplicate-task-link small { color: #95886c; font-size: 10px; }
 .form-success { margin: 0; color: #567d69; font-size: 13px; }
 .invite-link-note { margin: -4px 0 0; color: #898395; font-size: 12px; line-height: 1.5; }
 .invitation-banner { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #e8def1; border-radius: 9px; background: #f7f2fb; color: #625470; font-size: 14px; line-height: 1.5; }

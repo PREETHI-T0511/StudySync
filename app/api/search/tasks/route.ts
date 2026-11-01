@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
-import { getTaskCollection } from "@/lib/chroma";
+import { syncTaskDocuments } from "@/lib/chroma";
 import { requireUser } from "@/lib/auth";
 import { getPool } from "@/lib/db";
 import { errorResponse, HttpError } from "@/lib/http";
@@ -16,7 +16,20 @@ type SearchTaskRow = RowDataPacket & {
   assignees: string | null;
 };
 
-const MAX_RESULTS = 20;
+const MAX_RESULTS = 10;
+const MAX_COSINE_DISTANCE = 0.65;
+
+function getTextMatchRank(task: SearchTaskRow, query: string): number | null {
+  const normalizedQuery = query.toLocaleLowerCase();
+  const title = task.title.toLocaleLowerCase();
+  const description = task.description?.toLocaleLowerCase() ?? "";
+
+  if (title === normalizedQuery) return 0;
+  if (title.startsWith(normalizedQuery)) return 1;
+  if (title.includes(normalizedQuery)) return 2;
+  if (description.includes(normalizedQuery)) return 3;
+  return null;
+}
 
 export async function GET(request: Request) {
   try {
@@ -51,53 +64,55 @@ export async function GET(request: Request) {
       return NextResponse.json({ taskIds: [] });
     }
 
-    try {
-      const collection = await getTaskCollection();
-      const ids = tasks.map((task) => String(task.id));
-      const indexed = await collection.get({ ids, include: ["documents"] });
-      const indexedDocuments = new Map(
-        indexed.ids.map((id, index) => [id, indexed.documents[index]]),
-      );
-      const changedTasks = tasks.filter((task) => {
-        const document = [
-          `Task: ${task.title}`,
-          `Description: ${task.description ?? ""}`,
-          `Team: ${task.groupName}`,
-          `Assignees: ${task.assignees ?? "Unassigned"}`,
-        ].join("\n");
-        return indexedDocuments.get(String(task.id)) !== document;
-      });
+    const textMatches = tasks
+      .map((task) => ({ task, rank: getTextMatchRank(task, query) }))
+      .filter(
+        (match): match is { task: SearchTaskRow; rank: number } =>
+          match.rank !== null,
+      )
+      .sort(
+        (first, second) =>
+          first.rank - second.rank ||
+          first.task.title.localeCompare(second.task.title),
+      )
+      .map(({ task }) => Number(task.id));
 
-      if (changedTasks.length > 0) {
-        await collection.upsert({
-          ids: changedTasks.map((task) => String(task.id)),
-          documents: changedTasks.map((task) => [
-            `Task: ${task.title}`,
-            `Description: ${task.description ?? ""}`,
-            `Team: ${task.groupName}`,
-            `Assignees: ${task.assignees ?? "Unassigned"}`,
-          ].join("\n")),
-          metadatas: changedTasks.map((task) => ({ groupId: Number(task.groupId) })),
-        });
-      }
+    try {
+      const collection = await syncTaskDocuments(tasks);
+      const ids = tasks.map((task) => String(task.id));
 
       const groupIds = [...new Set(tasks.map((task) => Number(task.groupId)))];
       const results = await collection.query({
         queryTexts: [query],
-        nResults: Math.min(MAX_RESULTS, tasks.length),
+        nResults: tasks.length,
         where: { groupId: { $in: groupIds } },
       });
       const visibleTaskIds = new Set(ids);
-      const taskIds = (results.ids[0] ?? [])
-        .filter((id) => visibleTaskIds.has(id))
-        .map(Number);
-      return NextResponse.json({ taskIds });
+      const resultIds = results.ids[0] ?? [];
+      const distances = results.distances?.[0] ?? [];
+      const taskIds = resultIds.flatMap((id, index) => {
+        const distance = distances[index];
+        if (
+          !visibleTaskIds.has(id) ||
+          distance === null ||
+          distance === undefined ||
+          distance > MAX_COSINE_DISTANCE
+        ) {
+          return [];
+        }
+        return [Number(id)];
+      });
+      const rankedTaskIds = [
+        ...textMatches,
+        ...taskIds.filter((taskId) => !textMatches.includes(taskId)),
+      ].slice(0, MAX_RESULTS);
+      return NextResponse.json({ taskIds: rankedTaskIds });
     } catch (error) {
       console.error("ChromaDB task search failed:", error);
-      throw new HttpError(
-        503,
-        "Semantic search is unavailable. Start local ChromaDB with `docker compose up -d chroma` and try again.",
-      );
+      return NextResponse.json({
+        taskIds: textMatches.slice(0, MAX_RESULTS),
+        warning: "Semantic search is unavailable; showing text matches only.",
+      });
     }
   } catch (error) {
     return errorResponse(error);
