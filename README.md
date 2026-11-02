@@ -122,7 +122,7 @@ The application uses **MySQL as its primary relational database** and Next.js AP
 
 *Note: The focus timer and achievement indicators are browser-session UI features. Focus time is not persisted in MySQL.*
 
-### 7. Semantic Search (Optional)
+### 7. Semantic Search
 
 The project includes dependencies for an optional ChromaDB integration.
 
